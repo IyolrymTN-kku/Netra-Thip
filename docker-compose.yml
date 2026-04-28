@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: portal_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: adeo_portal
+    ports:
+      - "5432:5432"
+    volumes:
+      - portal_postgres_data:/var/lib/postgresql/data
+
+  mongodb:
+    image: mongo:6-jammy
+    container_name: portal_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports:
+      - "27017:27017"
+    volumes:
+      - portal_mongo_data:/data/db
+
+volumes:
+  portal_postgres_data:
+  portal_mongo_data:

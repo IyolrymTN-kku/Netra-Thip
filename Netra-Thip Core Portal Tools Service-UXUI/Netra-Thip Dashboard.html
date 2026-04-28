@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Netra-Thip · Core Portal Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sarabun:wght@400;500;600;700&family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="nav.jsx"></script>
+<script type="text/babel" src="dashboard-top.jsx"></script>
+<script type="text/babel" src="dashboard-main.jsx"></script>
+<script type="text/babel" src="tools-registry.jsx"></script>
+<script type="text/babel" src="dynamic-form.jsx"></script>
+<script type="text/babel" src="launcher.jsx"></script>
+<script type="text/babel" src="findings-data.jsx"></script>
+<script type="text/babel" src="results.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "accent": "blue",
+  "density": "regular",
+  "railCollapsed": false,
+  "showSecondary": true
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [view, setView] = React.useState('dashboard'); // dashboard | launcher | results
+  const [lastRun, setLastRun] = React.useState(null);
+
+  // apply theme + accent + density to root
+  React.useEffect(() => {
+    document.documentElement.dataset.theme = t.theme;
+    document.documentElement.dataset.accent = t.accent;
+    document.documentElement.dataset.density = t.density;
+  }, [t.theme, t.accent, t.density]);
+
+  const toggleTheme = () => setTweak('theme', t.theme === 'dark' ? 'light' : 'dark');
+  const toggleRail = () => setTweak('railCollapsed', !t.railCollapsed);
+
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'launcher', label: 'New Scan' },
+    { id: 'results', label: 'Latest Results' },
+  ];
+
+  const screenLabel = view === 'dashboard' ? '01 Dashboard' : view === 'launcher' ? '02 New Scan' : '03 Results';
+
+  return (
+    <div className="nt-app" data-rail={t.railCollapsed ? 'collapsed' : 'expanded'} data-screen-label={screenLabel}>
+      <NavRail collapsed={t.railCollapsed} onToggle={toggleRail} active={view === 'launcher' ? 'scans' : view === 'results' ? 'findings' : 'dashboard'} />
+      <TopNav theme={t.theme} onToggleTheme={toggleTheme} onToggleRail={toggleRail} />
+
+      <main style={{
+        gridArea: 'main',
+        padding: '18px 22px 28px',
+        overflow: 'auto',
+        minWidth: 0,
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1480, margin: '0 auto' }}>
+          {/* View switcher */}
+          <div style={{ display: 'inline-flex', alignSelf: 'flex-start', padding: 3, borderRadius: 9, background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: 'var(--shadow-sm)' }}>
+            {navItems.map(it => (
+              <button key={it.id} onClick={() => setView(it.id)} style={{
+                height: 28, padding: '0 14px', border: 0, borderRadius: 6, cursor: 'pointer',
+                background: view === it.id ? 'var(--nt-blue)' : 'transparent',
+                color: view === it.id ? '#fff' : 'var(--ink-2)',
+                fontWeight: view === it.id ? 600 : 500, fontSize: 11.5,
+              }}>{it.label}</button>
+            ))}
+          </div>
+
+          {view === 'dashboard' && (<>
+          <Hero onNewScan={() => setView('launcher')} />
+          <KpiRow />
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(360px, 5fr) minmax(0, 7fr)',
+            gap: 14,
+            alignItems: 'stretch',
+          }}>
+            <RiskDonut />
+            <RecentScans />
+          </div>
+
+          {t.showSecondary && (
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14,
+            }}>
+              <ScanVelocity />
+              <TopTargets />
+              <AiSummaries />
+            </div>
+          )}
+          </>)}
+
+          {view === 'launcher' && (
+            <NewScanLauncher
+              onClose={() => setView('dashboard')}
+              onRun={(tool, vals) => { setLastRun({ tool: tool.name, target: vals.target_url || vals.target_ip || vals.base_url || vals.host || 'multi-target', duration: tool.runtime, when: 'just now' }); setView('results'); }}
+            />
+          )}
+
+          {view === 'results' && (
+            <ResultsDashboard runMeta={lastRun} onClose={() => setView('launcher')} />
+          )}
+
+          <footer style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 4px', fontSize: 11, color: 'var(--ink-4)',
+            borderTop: '1px solid var(--line)', marginTop: 6,
+          }}>
+            <span>เนตรทิพย์ Netra-Thip Core Portal · v2.4.1 · {new Date().getFullYear()}</span>
+            <span style={{ display: 'inline-flex', gap: 14 }}>
+              <a href="#" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Docs</a>
+              <a href="#" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>API</a>
+              <a href="#" style={{ color: 'var(--ink-3)', textDecoration: 'none' }}>Status</a>
+              <span className="mono">SOC · ISO27001</span>
+            </span>
+          </footer>
+        </div>
+      </main>
+
+      <TweaksPanel>
+        <TweakSection label="Appearance" />
+        <TweakRadio label="Theme" value={t.theme} options={['light', 'dark']}
+                    onChange={(v) => setTweak('theme', v)} />
+        <TweakRadio label="Accent" value={t.accent} options={['blue', 'cyan', 'violet', 'thai']}
+                    onChange={(v) => setTweak('accent', v)} />
+        <TweakRadio label="Density" value={t.density} options={['compact', 'regular']}
+                    onChange={(v) => setTweak('density', v)} />
+        <TweakSection label="Layout" />
+        <TweakToggle label="Collapse sidebar" value={t.railCollapsed}
+                     onChange={(v) => setTweak('railCollapsed', v)} />
+        <TweakToggle label="Show secondary widgets" value={t.showSecondary}
+                     onChange={(v) => setTweak('showSecondary', v)} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+// ─── Secondary widgets ──────────────────────────────────────────────────────
+function ScanVelocity() {
+  const data = [12,18,14,22,19,28,24,32,29,35,40,38,44,42,48,52,49,55,58,54,60,64,68,62,71,69,74,78,76,82];
+  return (
+    <div className="nt-card" style={{ padding: '16px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Scan Velocity</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>last 30 days</div>
+        </div>
+        <span className="chip sev-low" style={{ background: 'rgba(16,185,129,0.10)', color: 'var(--ok)' }}>
+          +18.4%
+        </span>
+      </div>
+      <div className="tnum" style={{ fontSize: 26, fontWeight: 700, marginTop: 10, letterSpacing: '-0.02em' }}>
+        1,284 <span style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 500 }}>scans</span>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <Sparkline data={data} width={300} height={56} color="var(--nt-blue)" />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: 'var(--ink-4)', marginTop: 4 }}>
+        <span>Mar 28</span><span>Apr 12</span><span>Apr 28</span>
+      </div>
+    </div>
+  );
+}
+
+function TopTargets() {
+  const items = [
+    { host: 'api.netra-thip.co',  crit: 9, high: 18, total: 41 },
+    { host: 'cms.staging.nt',     crit: 7, high: 14, total: 33 },
+    { host: '10.42.1.7',          crit: 5, high: 11, total: 24 },
+    { host: 'shop.nt.co',         crit: 3, high: 16, total: 28 },
+    { host: 'auth.netra-thip.co', crit: 2, high: 8,  total: 14 },
+  ];
+  const max = Math.max(...items.map(i => i.total));
+  return (
+    <div className="nt-card" style={{ padding: '16px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Top Vulnerable Targets</div>
+        <span style={{ fontSize: 10.5, color: 'var(--ink-4)' }}>by finding count</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+        {items.map(it => (
+          <div key={it.host}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, marginBottom: 4 }}>
+              <span className="mono" style={{ color: 'var(--ink-2)' }}>{it.host}</span>
+              <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                <span className="chip sev-critical" style={{ height: 16, fontSize: 10 }}>{it.crit}</span>
+                <span className="chip sev-high" style={{ height: 16, fontSize: 10 }}>{it.high}</span>
+                <span className="mono tnum" style={{ color: 'var(--ink-3)', fontSize: 11 }}>{it.total}</span>
+              </span>
+            </div>
+            <div style={{ height: 4, borderRadius: 2, background: 'var(--surface-3)', overflow: 'hidden' }}>
+              <div style={{
+                width: `${(it.total/max)*100}%`, height: '100%',
+                background: `linear-gradient(90deg, var(--sev-critical) 0%, var(--sev-high) 60%, var(--sev-medium) 100%)`,
+              }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AiSummaries() {
+  const items = [
+    { icon: 'sparkles', title: 'Critical SQL injection chain detected', body: 'shop.nt.co — /api/orders param `q`. Likely chained with auth bypass on /v2/login.', time: '12m', sev: 'critical' },
+    { icon: 'sparkles', title: 'Pattern: 4 hosts share outdated OpenSSL', body: '10.42.1.7, 10.42.1.9, 10.42.1.12, 10.42.2.4 all on 1.0.2k. Suggest batch patch.', time: '1h', sev: 'high' },
+    { icon: 'sparkles', title: 'Noise reduction: 23 false-positives consolidated', body: 'Recurring xmlrpc.php pings on staging — auto-suppressed.', time: '3h', sev: 'info' },
+  ];
+  return (
+    <div className="nt-card" style={{ padding: '16px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            width: 22, height: 22, borderRadius: 6,
+            background: 'linear-gradient(135deg, var(--nt-blue), var(--nt-cyan))',
+            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Icon name="sparkles" size={12} />
+          </span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>AI Insights</div>
+            <div style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>claude-haiku · 3 fresh</div>
+          </div>
+        </div>
+        <button className="btn btn-sm" style={{ height: 22, fontSize: 10.5 }}>Configure</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{
+            borderLeft: `2px solid var(--sev-${it.sev})`,
+            paddingLeft: 10,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{it.title}</div>
+              <span className="mono" style={{ fontSize: 10, color: 'var(--ink-4)' }}>{it.time}</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.45 }}>
+              {it.body}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

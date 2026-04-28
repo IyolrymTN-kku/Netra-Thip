@@ -1,26 +1,265 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ─── Tailwind v4 theme tokens (exposed as utilities) ─── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-nt-blue: var(--nt-blue);
+  --color-nt-blue-600: var(--nt-blue-600);
+  --color-nt-cyan: var(--nt-cyan);
+  --color-nt-gold: var(--nt-gold);
+
+  --color-sev-critical: var(--sev-critical);
+  --color-sev-high: var(--sev-high);
+  --color-sev-medium: var(--sev-medium);
+  --color-sev-low: var(--sev-low);
+  --color-sev-info: var(--sev-info);
+
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+
+  --font-sans: var(--font-prompt), "Prompt", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+  --font-thai: var(--font-prompt), "Prompt", "Sarabun", "Noto Sans Thai", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Netra-Thip design tokens & base styles ─── */
+
+:root {
+  /* Brand */
+  --nt-blue: #0066FF;
+  --nt-blue-600: #0052CC;
+  --nt-blue-50: #EBF2FF;
+  --nt-cyan: #00D9FF;
+  --nt-gold: #C9A227;
+  --nt-saffron: #E4572E;
+
+  /* Severity */
+  --sev-critical: #E11D48;
+  --sev-high: #F97316;
+  --sev-medium: #EAB308;
+  --sev-low: #0066FF;
+  --sev-info: #64748B;
+
+  --ok: #10B981;
+  --warn: #F59E0B;
+  --err: #EF4444;
+
+  /* Light surface (default light fallback) */
+  --bg: #F4F6FA;
+  --surface: #FFFFFF;
+  --surface-2: #F8FAFC;
+  --surface-3: #EEF2F7;
+  --line: #E5E9F0;
+  --line-2: #D9DEE8;
+  --ink: #0A1628;
+  --ink-2: #2A3447;
+  --ink-3: #5A6478;
+  --ink-4: #8590A4;
+  --hover: rgba(10, 22, 40, 0.04);
+
+  --shadow-sm: 0 1px 0 rgba(10, 22, 40, 0.04), 0 1px 2px rgba(10, 22, 40, 0.04);
+  --shadow-md: 0 1px 0 rgba(10, 22, 40, 0.04), 0 4px 16px rgba(10, 22, 40, 0.06);
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+}
+
+[data-theme="dark"] {
+  --bg: #060E1C;
+  --surface: #0F1F38;
+  --surface-2: #0A1628;
+  --surface-3: #142848;
+  --line: #1E3358;
+  --line-2: #2A4470;
+  --ink: #E8EEF7;
+  --ink-2: #C0CCE0;
+  --ink-3: #8B98AE;
+  --ink-4: #5A6884;
+  --hover: rgba(255, 255, 255, 0.04);
+
+  --nt-blue-50: rgba(0, 102, 255, 0.12);
+  --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 0 rgba(0, 0, 0, 0.4), 0 6px 22px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-feature-settings: "cv11", "ss01", "cv02";
+}
+
+.mono { font-family: var(--font-mono); font-feature-settings: "zero", "cv01"; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 6px;
+  border: 2px solid var(--bg);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-4);
+  border: 2px solid var(--bg);
+  background-clip: padding-box;
+}
+
+/* App layout */
+.nt-app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--rail-w, 240px) 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    "rail nav"
+    "rail main";
+  background: var(--bg);
+  transition: grid-template-columns 220ms cubic-bezier(.2, .7, .2, 1);
+}
+.nt-app[data-rail="collapsed"] { --rail-w: 60px; }
+
+/* Surfaces */
+.nt-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--surface-3); color: var(--ink); }
+.btn-primary {
+  background: var(--nt-blue);
+  border-color: var(--nt-blue);
+  color: #fff;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 102, 255, 0.3);
+}
+.btn-primary:hover { background: var(--nt-blue-600); color: #fff; }
+.btn-ghost { border-color: transparent; background: transparent; }
+.btn-ghost:hover { background: var(--hover); }
+.btn-lg { height: 38px; padding: 0 16px; font-size: 13px; }
+.btn-sm { height: 26px; padding: 0 9px; font-size: 11.5px; border-radius: 6px; }
+
+/* Chips */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chip-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+.sev-critical { background: rgba(225, 29, 72, 0.10); color: var(--sev-critical); }
+.sev-high     { background: rgba(249, 115, 22, 0.12); color: var(--sev-high); }
+.sev-medium   { background: rgba(234, 179, 8, 0.14); color: #A47600; }
+.sev-low      { background: rgba(0, 102, 255, 0.10); color: var(--sev-low); }
+.sev-info     { background: rgba(100, 116, 139, 0.14); color: var(--sev-info); }
+[data-theme="dark"] .sev-medium { color: #EAB308; }
+
+/* Status pills */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.status-running { color: var(--nt-blue); background: var(--nt-blue-50); border-color: rgba(0, 102, 255, 0.18); }
+.status-done    { color: var(--ok); background: rgba(16, 185, 129, 0.10); border-color: rgba(16, 185, 129, 0.18); }
+.status-queued  { color: var(--ink-3); background: var(--surface-3); border-color: var(--line); }
+.status-failed  { color: var(--err); background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.18); }
+.status-paused  { color: var(--warn); background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.18); }
+
+@keyframes nt-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.5; }
+}
+.pulse-dot {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: nt-pulse 1.6s ease-in-out infinite;
+}
+
+:focus-visible {
+  outline: 2px solid var(--nt-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.hr { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+[data-density="compact"] { font-size: 12.5px; }
+[data-density="compact"] .nt-card { border-radius: 8px; }
+[data-density="compact"] .btn { height: 28px; }
+
+[data-accent="cyan"]   { --nt-blue: #06B6D4; --nt-blue-600: #0891B2; --nt-blue-50: rgba(6, 182, 212, 0.12); }
+[data-accent="violet"] { --nt-blue: #7C3AED; --nt-blue-600: #6D28D9; --nt-blue-50: rgba(124, 58, 237, 0.12); }
+[data-accent="thai"]   { --nt-blue: #C9A227; --nt-blue-600: #A8851E; --nt-blue-50: rgba(201, 162, 39, 0.14); }
+
+.dot-grid {
+  background-image: radial-gradient(rgba(10, 22, 40, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+}
+[data-theme="dark"] .dot-grid {
+  background-image: radial-gradient(rgba(0, 217, 255, 0.10) 1px, transparent 1px);
 }
