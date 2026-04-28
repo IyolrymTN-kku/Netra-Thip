@@ -1,0 +1,390 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Icon } from "@/components/icons/Icon";
+import { TOOLS, type FieldConfig, type ToolDef } from "@/lib/tools/registry";
+import { DynamicForm, type FormValues } from "./DynamicForm";
+import { ToolCard } from "./ToolCard";
+
+interface NewScanLauncherProps {
+  projectId: string;
+}
+
+type AssetType = "DOMAIN" | "IP" | "URL";
+
+interface TargetDescriptor {
+  fieldId: string;
+  assetType: AssetType;
+}
+
+// Pick the field that represents the scan target. Priority order — IP > URL > domain text.
+function pickTargetField(tool: ToolDef): TargetDescriptor | null {
+  const ip = tool.fields.find(
+    (f) => f.type === "ip" || f.id === "target_ip",
+  );
+  if (ip) return { fieldId: ip.id, assetType: "IP" };
+  const url = tool.fields.find(
+    (f) => f.type === "url" || f.id === "target_url" || f.id === "target_api_url",
+  );
+  if (url) return { fieldId: url.id, assetType: "URL" };
+  const text = tool.fields.find((f) => f.id === "target");
+  if (text) return { fieldId: text.id, assetType: "DOMAIN" };
+  return null;
+}
+
+function isSecretFieldId(tool: ToolDef, fieldId: string): boolean {
+  return tool.fields.some(
+    (f: FieldConfig) => f.id === fieldId && f.type === "secret",
+  );
+}
+
+function isFileFieldId(tool: ToolDef, fieldId: string): boolean {
+  return tool.fields.some(
+    (f: FieldConfig) => f.id === fieldId && f.type === "file",
+  );
+}
+
+function sanitiseParameters(
+  tool: ToolDef,
+  values: FormValues,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined || value === null || value === "") continue;
+    if (isSecretFieldId(tool, key)) continue; // BYOK handled in Phase 3
+    if (isFileFieldId(tool, key)) continue; // multipart upload in Phase 3
+    out[key] = value;
+  }
+  return out;
+}
+
+export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
+  const router = useRouter();
+  const [selectedId, setSelectedId] = useState<string>(TOOLS[0].id);
+  const [valuesByTool, setValuesByTool] = useState<Record<string, FormValues>>(
+    {},
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const tool = useMemo(
+    () => TOOLS.find((t) => t.id === selectedId) ?? TOOLS[0],
+    [selectedId],
+  );
+
+  const values = valuesByTool[tool.id] ?? {};
+  const setVal = (id: string, v: unknown) => {
+    setValuesByTool((prev) => ({
+      ...prev,
+      [tool.id]: { ...(prev[tool.id] ?? {}), [id]: v },
+    }));
+  };
+
+  const target = pickTargetField(tool);
+  const requiredOk = tool.fields
+    .filter((f) => f.required)
+    .every((f) => {
+      const v = values[f.id] ?? ("default" in f ? f.default : undefined);
+      return v !== undefined && v !== null && v !== "";
+    });
+  const targetOk =
+    target !== null &&
+    typeof values[target.fieldId] === "string" &&
+    (values[target.fieldId] as string).trim().length > 0;
+
+  const canSubmit = requiredOk && targetOk && !submitting;
+
+  async function submit() {
+    if (!target) {
+      setErrorMsg("This tool has no scannable target field.");
+      return;
+    }
+    const targetValue = String(values[target.fieldId] ?? "").trim();
+    if (!targetValue) {
+      setErrorMsg("Target is required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/scans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolName: tool.id,
+          projectId,
+          target: targetValue,
+          assetType: target.assetType,
+          parameters: sanitiseParameters(tool, values),
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setErrorMsg(body?.error ?? `Request failed (${res.status})`);
+        setSubmitting(false);
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Network error");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      className="nt-fade-in"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "300px 1fr",
+        gap: 16,
+        minHeight: "calc(100vh - 56px - 36px)",
+      }}
+    >
+      {/* LEFT: Tool picker */}
+      <aside
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          position: "sticky",
+          top: 18,
+          alignSelf: "flex-start",
+          maxHeight: "calc(100vh - 90px)",
+          overflow: "auto",
+          paddingRight: 4,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              color: "var(--ink-3)",
+              textTransform: "uppercase",
+              marginBottom: 6,
+            }}
+          >
+            STEP 1 · Select tool
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            <span className="mono tnum">{TOOLS.length}</span> tools available
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {TOOLS.map((t) => (
+            <ToolCard
+              key={t.id}
+              tool={t}
+              selected={t.id === selectedId}
+              onClick={() => setSelectedId(t.id)}
+            />
+          ))}
+        </div>
+      </aside>
+
+      {/* RIGHT: Form */}
+      <div
+        className="nt-card nt-scale-in"
+        style={{
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+        key={tool.id}
+      >
+        {/* Tool header */}
+        <div
+          style={{
+            padding: "20px 24px",
+            borderBottom: "1px solid var(--line)",
+            background: `linear-gradient(135deg, color-mix(in oklab, ${tool.color} 8%, var(--surface)) 0%, var(--surface) 60%)`,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <span
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: `linear-gradient(135deg, ${tool.color}, color-mix(in oklab, ${tool.color} 55%, #000))`,
+              color: "#fff",
+              fontSize: 18,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "var(--font-mono)",
+              boxShadow: `0 8px 24px color-mix(in oklab, ${tool.color} 35%, transparent)`,
+            }}
+          >
+            {tool.glyph}
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{ display: "flex", alignItems: "baseline", gap: 10 }}
+            >
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: "var(--ink)",
+                }}
+              >
+                {tool.name}
+              </h2>
+              <span
+                className="chip"
+                style={{
+                  background: `color-mix(in oklab, ${tool.color} 14%, transparent)`,
+                  color: tool.color,
+                }}
+              >
+                {tool.category}
+              </span>
+              <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                runtime <span className="mono">{tool.runtime}</span>
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--ink-3)",
+                marginTop: 4,
+              }}
+            >
+              {tool.desc}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{
+              background: "transparent",
+              border: 0,
+              cursor: "pointer",
+              width: 32,
+              height: 32,
+              borderRadius: 7,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--ink-3)",
+            }}
+            onClick={() => router.back()}
+            aria-label="Close"
+          >
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+
+        {/* Form body */}
+        <div
+          style={{ padding: "22px 24px", overflow: "auto", flex: 1 }}
+          key={tool.id + "-form"}
+        >
+          <DynamicForm tool={tool} values={values} onChange={setVal} />
+        </div>
+
+        {/* Footer / actions */}
+        <div
+          style={{
+            padding: "14px 24px",
+            borderTop: "1px solid var(--line)",
+            background: "var(--surface-2)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              fontSize: 11.5,
+              color: "var(--ink-3)",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Icon name="lock" size={12} />
+              BYOK keys are encrypted in-flight & never written to disk
+            </span>
+            <span
+              style={{
+                width: 3,
+                height: 3,
+                borderRadius: "50%",
+                background: "var(--ink-4)",
+              }}
+            />
+            <span>
+              <span className="mono tnum">
+                {tool.fields.filter((f) => f.required).length}
+              </span>{" "}
+              required
+            </span>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            {errorMsg && (
+              <span
+                role="alert"
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--err)",
+                  marginRight: 4,
+                }}
+              >
+                {errorMsg}
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => router.back()}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!canSubmit}
+              style={{
+                opacity: canSubmit ? 1 : 0.5,
+                cursor: canSubmit ? "pointer" : "not-allowed",
+              }}
+              onClick={submit}
+            >
+              <Icon name="play" size={12} stroke={2.4} />
+              {submitting ? "Queueing…" : "Run scan"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

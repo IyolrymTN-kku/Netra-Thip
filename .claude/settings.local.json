@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma *)",
+      "PowerShell(npx prisma migrate dev --name scan_flow 2>&1)",
+      "Bash(tasklist)"
+    ]
+  }
+}

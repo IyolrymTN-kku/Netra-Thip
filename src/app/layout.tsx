@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
-import { Prompt, JetBrains_Mono } from "next/font/google";
+import { Inter, Kanit, JetBrains_Mono } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
 import "./globals.css";
 
-const prompt = Prompt({
-  variable: "--font-prompt",
+const inter = Inter({
+  variable: "--font-inter",
   weight: ["400", "500", "600", "700"],
-  subsets: ["latin", "thai"],
+  subsets: ["latin"],
+});
+
+const kanit = Kanit({
+  variable: "--font-kanit",
+  weight: ["300", "400", "500", "600"],
+  subsets: ["thai", "latin"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -24,8 +30,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-theme="dark">
-      <body className={`${prompt.variable} ${jetbrainsMono.variable}`}>
+    <html 
+      lang="en" 
+      data-theme="dark"
+      className={`${inter.variable} ${kanit.variable} ${jetbrainsMono.variable}`}
+    >
+      <body>
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

@@ -57,7 +57,12 @@ export default async function DashboardPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <Hero userName={userName} activeScans={6} lastSyncMinutesAgo={14} />
+      <Hero
+        userName={userName}
+        activeScans={6}
+        lastSyncMinutesAgo={14}
+        newScanHref="/scans/new"
+      />
       <KpiRow cards={KPI_CARDS} />
     </div>
   );

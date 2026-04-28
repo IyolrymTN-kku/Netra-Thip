@@ -1,22 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/icons/Icon";
 
 interface HeroProps {
   userName: string;
   activeScans?: number;
   lastSyncMinutesAgo?: number;
-  onNewScan?: () => void;
-  onImport?: () => void;
+  newScanHref?: string;
+  importHref?: string;
 }
 
 export function Hero({
   userName,
   activeScans = 0,
   lastSyncMinutesAgo,
-  onNewScan,
-  onImport,
+  newScanHref = "/scans/new",
+  importHref,
 }: HeroProps) {
   const [now, setNow] = useState<Date | null>(null);
 
@@ -143,15 +144,18 @@ export function Hero({
           zIndex: 1,
         }}
       >
-        <button type="button" className="btn btn-lg" onClick={onImport}>
-          <Icon name="download" size={14} />
-          Import findings
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary btn-lg"
-          onClick={onNewScan}
-        >
+        {importHref ? (
+          <Link href={importHref} className="btn btn-lg">
+            <Icon name="download" size={14} />
+            Import findings
+          </Link>
+        ) : (
+          <button type="button" className="btn btn-lg" disabled>
+            <Icon name="download" size={14} />
+            Import findings
+          </button>
+        )}
+        <Link href={newScanHref} className="btn btn-primary btn-lg">
           <Icon name="plus" size={14} stroke={2} />
           New Scan
           <span
@@ -167,7 +171,7 @@ export function Hero({
           >
             N
           </span>
-        </button>
+        </Link>
       </div>
     </section>
   );

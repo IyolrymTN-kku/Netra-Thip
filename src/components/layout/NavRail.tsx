@@ -24,7 +24,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "OPERATE",
     items: [
       { id: "dashboard", href: "/dashboard", icon: "activity", label: "Dashboard" },
-      { id: "scans", href: "/scans", icon: "scan", label: "Scans", badge: 6 },
+      { id: "scans", href: "/scans/new", icon: "scan", label: "Scans", badge: 6 },
       { id: "findings", href: "/findings", icon: "bug", label: "Findings", badge: 47, badgeKind: "critical" },
       { id: "targets", href: "/targets", icon: "target", label: "Targets" },
     ],
