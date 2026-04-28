@@ -58,7 +58,7 @@ All raw output is normalised into a standard `NormalizedFinding` schema, stored 
 ### 4.1 Clone the repository
 
 ```bash
-git clone <your-repo-url> netra-thip-portal
+git clone https://github.com/IyolrymTN-kku/Netra-Thip.git
 cd netra-thip-portal
 ```
 
