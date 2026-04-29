@@ -159,25 +159,43 @@ Open [http://localhost:3000](http://localhost:3000). You will be redirected to `
 netra-thip-portal/
 ├── prisma/
 │   ├── schema.prisma          # Prisma data model (Postgres)
+│   ├── migrations/            # Versioned SQL migrations
 │   └── seed.ts                # Idempotent ADMIN bootstrap
+├── uploads/                   # Cat 3 tool inputs, per-user (gitignored)
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/login/      # Public login page
-│   │   ├── (portal)/          # Authenticated route group
-│   │   │   ├── layout.tsx     # Auth gate + AppShell
-│   │   │   └── dashboard/     # Operations dashboard
-│   │   ├── api/auth/[...nextauth]/  # NextAuth route handlers
-│   │   ├── globals.css        # Tailwind v4 tokens + design system
-│   │   └── layout.tsx         # Root layout (fonts, theme)
+│   │   ├── (auth)/login/                    # Public login page
+│   │   ├── (portal)/                        # Authenticated route group
+│   │   │   ├── layout.tsx                   # Auth gate + AppShell
+│   │   │   ├── dashboard/                   # Operations dashboard
+│   │   │   ├── findings/                    # Global findings list
+│   │   │   └── scans/
+│   │   │       ├── new/                     # New-scan launcher
+│   │   │       └── [id]/                    # Scan results detail
+│   │   ├── api/
+│   │   │   ├── auth/[...nextauth]/          # NextAuth route handlers
+│   │   │   └── scans/
+│   │   │       ├── route.ts                 # POST: create + trigger scan
+│   │   │       ├── upload/                  # POST: multipart file upload
+│   │   │       ├── callback/                # POST: status-only callback (HMAC)
+│   │   │       └── [id]/results/            # POST: bulk findings ingest (HMAC)
+│   │   ├── globals.css                      # Tailwind v4 tokens + design system
+│   │   └── layout.tsx                       # Root layout (fonts, theme)
 │   ├── components/
 │   │   ├── dashboard/         # Hero, KpiCard, KpiRow, Sparkline
 │   │   ├── icons/             # Icon library, NetraLogo
-│   │   └── layout/            # AppShell, NavRail, TopNav
+│   │   ├── layout/            # AppShell, NavRail, TopNav
+│   │   ├── results/           # SevBadge, FindingsTable, FindingDrawer, ResultsView
+│   │   └── scans/             # NewScanLauncher, DynamicForm, ToolCard
 │   ├── lib/
+│   │   ├── auth/guards.ts     # requireRole RBAC helper
 │   │   ├── db/prisma.ts       # PrismaClient singleton
-│   │   └── security/
-│   │       ├── encryption.ts  # AES-256-GCM utility (server-only)
-│   │       └── encryption.test.ts
+│   │   ├── findings/schema.ts # Zod ingestion contract
+│   │   ├── projects/default.ts# getOrCreateDefaultProject
+│   │   ├── scans/             # signing, byok, trigger, schemas
+│   │   ├── security/          # AES-256-GCM utility + tests
+│   │   ├── tools/registry.ts  # Typed tool catalogue
+│   │   └── uploads/storage.ts # Upload paths + traversal guard
 │   ├── types/
 │   │   └── next-auth.d.ts     # Session/JWT type augmentation
 │   ├── auth.config.ts         # Edge-safe NextAuth config
@@ -187,6 +205,17 @@ netra-thip-portal/
 ├── vitest.config.ts
 └── .env.example               # Required environment variables
 ```
+
+### Data model (Postgres)
+
+| Table | Phase | Purpose |
+| --- | --- | --- |
+| `User`, `Account`, `Session`, `VerificationToken` | 0 | NextAuth identity |
+| `Project` | 0 | Workspace owning assets, keys, jobs, findings |
+| `Asset` | 0 | Scan target (`@@unique(projectId, target)`) |
+| `ApiKey` | 0/3 | BYOK key, AES-256-GCM ciphertext + iv + authTag |
+| `ScanJob` | 0/2 | Tool invocation; tracks `PENDING → RUNNING → COMPLETED \| FAILED` |
+| `Finding` | 5 | Normalised vulnerability record per scan job |
 
 ---
 
@@ -207,15 +236,30 @@ Use `CLAUDE.md` as the canonical reference for the architecture rules that gover
 
 ---
 
-## 8. Security Notes
+## 8. n8n Integration
+
+The Core Engine talks to n8n through three shared trust boundaries. All three rely on the **same** HMAC-SHA256 secret (`N8N_CALLBACK_SECRET`) — no per-route credentials.
+
+| Direction | Route | When |
+| --- | --- | --- |
+| Portal → n8n | `POST $N8N_WEBHOOK_URL` | When the operator submits a new scan. Payload includes `scanJobId`, target, sanitised parameters, decrypted BYOK secrets (in-memory only), and a callback URL. The trigger is fire-and-forget with a 10 s timeout — `PENDING → RUNNING` on 2xx, `PENDING → FAILED` on timeout. |
+| n8n → Portal | `POST /api/scans/[id]/results` | When a tool produces normalised findings. Bulk-inserts into the `Finding` table and atomically flips the scan to `COMPLETED`. Caps at 5 000 findings per call. |
+| n8n → Portal | `POST /api/scans/callback` | When a tool fails, or succeeds with zero findings. Status-only update (`COMPLETED` or `FAILED`). |
+
+For both inbound routes n8n must echo the `X-Netra-Signature` header set by the trigger. Mismatch → `401`. Already-terminal jobs → `409`.
+
+## 9. Security Notes
 
 - `src/lib/security/encryption.ts` imports `server-only`. It must never be reachable from a Client Component bundle.
 - Rotating `ENCRYPTION_KEY` invalidates every previously stored BYOK ciphertext. Plan a re-encryption migration before rotating in any environment that holds production keys.
+- Rotating `N8N_CALLBACK_SECRET` invalidates every in-flight scan trigger. Schedule the rotation when the queue is drained.
 - The admin seed script is intended for development. Production environments should provision the first ADMIN through a dedicated, audited workflow.
+- The findings ingestion route is rate-limited only by the HMAC secret + the 5 000-finding cap. Add a per-job idempotency key if duplicate-delivery from n8n becomes a concern.
 - All `.env*` files except `.env.example` are git-ignored. Confirm with `git status` before committing.
+- `/uploads/` is git-ignored. Files are stored under `<UPLOAD_DIR>/<userId>/<uuid>-<sanitised-name>`; traversal is guarded by `assertPathInUserDir` in `src/lib/uploads/storage.ts`.
 
 ---
 
-## 9. License
+## 10. License
 
 Internal project — license to be defined by the platform team. Do not distribute outside the organisation without approval.

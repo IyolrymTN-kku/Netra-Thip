@@ -4,8 +4,23 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/guards";
 import { CreateScanInput } from "@/lib/scans/schema";
 import { getTool } from "@/lib/tools/registry";
+import {
+  extractSecrets,
+  persistSecrets,
+  secretsToPlaintextMap,
+} from "@/lib/scans/byok";
+import { triggerScanAsync } from "@/lib/scans/trigger";
+import { FileRefSchema } from "@/lib/scans/upload-schema";
+import { assertPathInUserDir } from "@/lib/uploads/storage";
 
 export const runtime = "nodejs";
+
+function callbackUrl(req: Request): string {
+  const fromEnv = process.env.NEXTAUTH_URL;
+  if (fromEnv) return `${fromEnv.replace(/\/$/, "")}/api/scans/callback`;
+  const origin = new URL(req.url).origin;
+  return `${origin}/api/scans/callback`;
+}
 
 export async function POST(req: Request) {
   const guard = await requireRole([Role.ADMIN, Role.PENTESTER]);
@@ -30,22 +45,57 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "project not found" }, { status: 404 });
   }
 
-  // Strip secret-typed fields server-side as defence in depth — even if the
-  // client kept them in `parameters`, they must never be persisted in plaintext.
   const tool = getTool(toolName);
-  const sanitised: Record<string, unknown> = {};
-  if (parameters && tool) {
-    const secretIds = new Set(
-      tool.fields.filter((f) => f.type === "secret").map((f) => f.id),
-    );
-    const fileIds = new Set(
-      tool.fields.filter((f) => f.type === "file").map((f) => f.id),
-    );
-    for (const [k, v] of Object.entries(parameters)) {
-      if (secretIds.has(k) || fileIds.has(k)) continue;
-      sanitised[k] = v;
-    }
+  if (!tool) {
+    return NextResponse.json({ error: "unknown tool" }, { status: 400 });
   }
+
+  const params: Record<string, unknown> = parameters ?? {};
+
+  // ─── BYOK secrets: encrypt + persist, keep plaintext map in-memory only ───
+  const secrets = extractSecrets(tool, params);
+  await persistSecrets(projectId, secrets);
+  const secretMap = secretsToPlaintextMap(secrets);
+
+  // ─── File refs: validate shape + reject path traversal ───
+  const fileRefs: Record<string, { path: string; originalName: string; size: number }> = {};
+  for (const f of tool.fields) {
+    if (f.type !== "file") continue;
+    const candidate = params[f.id];
+    if (candidate === undefined || candidate === null) continue;
+    const refResult = FileRefSchema.safeParse(candidate);
+    if (!refResult.success) {
+      return NextResponse.json(
+        { error: `invalid file ref for "${f.id}"` },
+        { status: 400 },
+      );
+    }
+    try {
+      assertPathInUserDir(refResult.data.path, session.user.id);
+    } catch {
+      return NextResponse.json(
+        { error: `file ref out of bounds for "${f.id}"` },
+        { status: 400 },
+      );
+    }
+    fileRefs[f.id] = refResult.data;
+  }
+
+  // ─── Sanitised parameters persisted on the ScanJob (no secrets, file refs OK) ───
+  const sanitised: Record<string, unknown> = {};
+  const secretIds = new Set(
+    tool.fields.filter((f) => f.type === "secret").map((f) => f.id),
+  );
+  const fileIds = new Set(
+    tool.fields.filter((f) => f.type === "file").map((f) => f.id),
+  );
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    if (secretIds.has(k)) continue;
+    if (fileIds.has(k)) continue;
+    sanitised[k] = v;
+  }
+  for (const [fid, ref] of Object.entries(fileRefs)) sanitised[fid] = ref;
 
   await prisma.asset.upsert({
     where: { projectId_target: { projectId, target } },
@@ -63,6 +113,22 @@ export async function POST(req: Request) {
           ? (sanitised as Prisma.InputJsonValue)
           : Prisma.DbNull,
     },
+  });
+
+  // Fire-and-forget. State transitions PENDING -> RUNNING (on 2xx) or
+  // PENDING -> FAILED (on timeout / non-2xx) happen out of band.
+  void triggerScanAsync({
+    scanJob: {
+      id: scanJob.id,
+      projectId: scanJob.projectId,
+      toolName: scanJob.toolName,
+    },
+    target,
+    assetType,
+    parameters: sanitised,
+    secrets: secretMap,
+    fileRefs,
+    callbackUrl: callbackUrl(req),
   });
 
   return NextResponse.json({ scanJob }, { status: 201 });

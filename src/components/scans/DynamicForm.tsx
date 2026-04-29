@@ -17,6 +17,7 @@ import type {
 
 export type FormValues = Record<string, unknown>;
 export interface FileMeta {
+  file: File;
   name: string;
   size: number;
   type: string;
@@ -200,9 +201,13 @@ function FileFieldComp({
   const inputRef = useRef<HTMLInputElement>(null);
   const file = value ?? null;
 
+  function toMeta(f: File): FileMeta {
+    return { file: f, name: f.name, size: f.size, type: f.type };
+  }
+
   function onFiles(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) onChange({ name: f.name, size: f.size, type: f.type });
+    if (f) onChange(toMeta(f));
   }
 
   return (
@@ -214,7 +219,7 @@ function FileFieldComp({
         onDrop={(e) => {
           e.preventDefault();
           const f = e.dataTransfer.files?.[0];
-          if (f) onChange({ name: f.name, size: f.size, type: f.type });
+          if (f) onChange(toMeta(f));
         }}
       >
         <span

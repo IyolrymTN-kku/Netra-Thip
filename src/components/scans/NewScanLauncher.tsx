@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons/Icon";
 import { TOOLS, type FieldConfig, type ToolDef } from "@/lib/tools/registry";
-import { DynamicForm, type FormValues } from "./DynamicForm";
+import { DynamicForm, type FileMeta, type FormValues } from "./DynamicForm";
 import { ToolCard } from "./ToolCard";
 
 interface NewScanLauncherProps {
@@ -17,6 +17,14 @@ interface TargetDescriptor {
   fieldId: string;
   assetType: AssetType;
 }
+
+interface UploadedFileRef {
+  path: string;
+  originalName: string;
+  size: number;
+}
+
+type SubmitPhase = "idle" | "uploading" | "queueing";
 
 // Pick the field that represents the scan target. Priority order — IP > URL > domain text.
 function pickTargetField(tool: ToolDef): TargetDescriptor | null {
@@ -33,30 +41,61 @@ function pickTargetField(tool: ToolDef): TargetDescriptor | null {
   return null;
 }
 
-function isSecretFieldId(tool: ToolDef, fieldId: string): boolean {
-  return tool.fields.some(
-    (f: FieldConfig) => f.id === fieldId && f.type === "secret",
-  );
-}
-
 function isFileFieldId(tool: ToolDef, fieldId: string): boolean {
   return tool.fields.some(
     (f: FieldConfig) => f.id === fieldId && f.type === "file",
   );
 }
 
-function sanitiseParameters(
+// Build the parameters object that hits POST /api/scans.
+// - Secret fields are passed through to the server, which encrypts them via
+//   AES-256-GCM into the ApiKey table and strips them from `parameters` server-side.
+// - File fields are replaced with the upload ref returned by /api/scans/upload.
+function buildParameters(
   tool: ToolDef,
   values: FormValues,
+  fileRefs: Record<string, UploadedFileRef>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined || value === null || value === "") continue;
-    if (isSecretFieldId(tool, key)) continue; // BYOK handled in Phase 3
-    if (isFileFieldId(tool, key)) continue; // multipart upload in Phase 3
+    if (isFileFieldId(tool, key)) continue; // replaced below
     out[key] = value;
   }
+  for (const [fieldId, ref] of Object.entries(fileRefs)) {
+    out[fieldId] = ref;
+  }
   return out;
+}
+
+async function uploadOneFile(meta: FileMeta): Promise<UploadedFileRef> {
+  const form = new FormData();
+  form.append("file", meta.file, meta.name);
+  const res = await fetch("/api/scans/upload", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+    throw new Error(body?.error ?? `upload failed (${res.status})`);
+  }
+  return (await res.json()) as UploadedFileRef;
+}
+
+async function uploadFileFields(
+  tool: ToolDef,
+  values: FormValues,
+): Promise<Record<string, UploadedFileRef>> {
+  const refs: Record<string, UploadedFileRef> = {};
+  for (const f of tool.fields) {
+    if (f.type !== "file") continue;
+    const v = values[f.id] as FileMeta | null | undefined;
+    if (!v?.file) continue;
+    refs[f.id] = await uploadOneFile(v);
+  }
+  return refs;
 }
 
 export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
@@ -65,8 +104,9 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
   const [valuesByTool, setValuesByTool] = useState<Record<string, FormValues>>(
     {},
   );
-  const [submitting, setSubmitting] = useState(false);
+  const [phase, setPhase] = useState<SubmitPhase>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const submitting = phase !== "idle";
 
   const tool = useMemo(
     () => TOOLS.find((t) => t.id === selectedId) ?? TOOLS[0],
@@ -106,9 +146,12 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
       return;
     }
 
-    setSubmitting(true);
     setErrorMsg(null);
     try {
+      setPhase("uploading");
+      const fileRefs = await uploadFileFields(tool, values);
+
+      setPhase("queueing");
       const res = await fetch("/api/scans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -117,7 +160,7 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
           projectId,
           target: targetValue,
           assetType: target.assetType,
-          parameters: sanitiseParameters(tool, values),
+          parameters: buildParameters(tool, values, fileRefs),
         }),
       });
       if (!res.ok) {
@@ -125,14 +168,18 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
           | { error?: string }
           | null;
         setErrorMsg(body?.error ?? `Request failed (${res.status})`);
-        setSubmitting(false);
+        setPhase("idle");
         return;
       }
-      router.push("/dashboard");
+      const body = (await res.json().catch(() => null)) as
+        | { scanJob?: { id?: string } }
+        | null;
+      const jobId = body?.scanJob?.id;
+      router.push(jobId ? `/scans/${jobId}` : "/dashboard");
       router.refresh();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Network error");
-      setSubmitting(false);
+      setPhase("idle");
     }
   }
 
@@ -380,7 +427,11 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
               onClick={submit}
             >
               <Icon name="play" size={12} stroke={2.4} />
-              {submitting ? "Queueing…" : "Run scan"}
+              {phase === "uploading"
+                ? "Uploading…"
+                : phase === "queueing"
+                  ? "Queueing…"
+                  : "Run scan"}
             </button>
           </div>
         </div>

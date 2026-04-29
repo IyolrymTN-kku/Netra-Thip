@@ -40,6 +40,12 @@ enum Severity {
   INFO
 }
 
+enum FindingStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
 // ─────────── Application models ───────────
 
 model User {
@@ -69,6 +75,7 @@ model Project {
   assets      Asset[]
   apiKeys     ApiKey[]
   scanJobs    ScanJob[]
+  findings    Finding[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -114,9 +121,31 @@ model ScanJob {
   rawMongoId     String?
   startedAt      DateTime?
   completedAt    DateTime?
+  findings       Finding[]
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  @@index([projectId, status])
+}
+
+model Finding {
+  id          String        @id @default(cuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scanJobId   String
+  scanJob     ScanJob       @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
+  title       String
+  severity    Severity
+  description String        @db.Text
+  remediation String        @db.Text
+  target      String
+  cvss        Float?
+  status      FindingStatus @default(OPEN)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([projectId, severity])
+  @@index([scanJobId, severity])
   @@index([projectId, status])
 }
 

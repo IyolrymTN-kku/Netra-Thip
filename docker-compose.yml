@@ -26,6 +26,32 @@ services:
     volumes:
       - portal_mongo_data:/data/db
 
+  # 🔥 เพิ่ม n8n Orchestration Engine
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: portal_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      # ตั้งให้ n8n เก็บข้อมูลระบบตัวเองลง Postgres ของเรา
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_DATABASE=adeo_portal
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=postgres
+    depends_on:
+      - postgres
+    volumes:
+      - portal_n8n_data:/home/node/.n8n
+
 volumes:
   portal_postgres_data:
   portal_mongo_data:
+  portal_n8n_data: # ประกาศ Volume สำหรับ n8n
