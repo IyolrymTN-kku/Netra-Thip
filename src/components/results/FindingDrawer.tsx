@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useOptimistic, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { FindingStatus } from "@prisma/client";
 import { Icon } from "@/components/icons/Icon";
 import { SevBadge } from "./SevBadge";
@@ -23,7 +24,36 @@ const TABS: { id: Tab; label: string; sparkle?: boolean }[] = [
 const STATUS_OPTIONS: FindingStatus[] = ["OPEN", "RESOLVED", "IGNORED"];
 
 export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("description");
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(
+    finding.status,
+    (_prev, next: FindingStatus) => next,
+  );
+  const [pending, startTransition] = useTransition();
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  function changeStatus(next: FindingStatus) {
+    if (next === optimisticStatus || pending) return;
+    setErrorMsg(null);
+    startTransition(async () => {
+      setOptimisticStatus(next);
+      const res = await fetch(`/api/findings/${finding.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setErrorMsg(body?.error ?? `update failed (${res.status})`);
+        // Throw inside the transition so useOptimistic auto-reverts.
+        throw new Error("revert");
+      }
+      router.refresh();
+    });
+  }
 
   return (
     <>
@@ -341,8 +371,24 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                       marginBottom: 8,
                     }}
                   >
-                    Status (read-only)
+                    Update status
                   </div>
+                  {errorMsg && (
+                    <div
+                      role="alert"
+                      style={{
+                        fontSize: 11.5,
+                        color: "var(--err)",
+                        background: "rgba(239,68,68,0.10)",
+                        border: "1px solid rgba(239,68,68,0.18)",
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {errorMsg}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: "flex",
@@ -351,10 +397,14 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                     }}
                   >
                     {STATUS_OPTIONS.map((s) => {
-                      const checked = finding.status === s;
+                      const checked = optimisticStatus === s;
                       return (
-                        <div
+                        <button
                           key={s}
+                          type="button"
+                          onClick={() => changeStatus(s)}
+                          disabled={pending}
+                          aria-pressed={checked}
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -365,6 +415,11 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                               : "var(--surface-2)",
                             border: `1px solid ${checked ? "var(--nt-blue)" : "var(--line)"}`,
                             borderRadius: 8,
+                            cursor: pending ? "wait" : "pointer",
+                            textAlign: "left",
+                            font: "inherit",
+                            transition: "all 140ms ease",
+                            opacity: pending && !checked ? 0.6 : 1,
                           }}
                         >
                           <span
@@ -379,22 +434,14 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                               boxShadow: checked
                                 ? "inset 0 0 0 3px var(--surface)"
                                 : "none",
+                              flexShrink: 0,
                             }}
                           />
                           <StatusPill status={s} />
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
-                  <p
-                    style={{
-                      fontSize: 10.5,
-                      color: "var(--ink-4)",
-                      marginTop: 10,
-                    }}
-                  >
-                    Status mutation API ships in the next phase.
-                  </p>
                 </div>
               </div>
             )}

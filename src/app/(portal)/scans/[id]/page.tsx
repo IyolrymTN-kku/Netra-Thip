@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db/prisma";
 import { ResultsHeader } from "@/components/results/ResultsHeader";
 import { ResultsView } from "@/components/results/ResultsView";
+import { ScanStatusPoller } from "@/components/results/ScanStatusPoller";
 
 interface ScanPageProps {
   params: Promise<{ id: string }>;
@@ -37,8 +38,17 @@ export default async function ScanResultsPage({ params }: ScanPageProps) {
     scanJob: { toolName: scanJob.toolName },
   }));
 
+  const isLive =
+    scanJob.status === "PENDING" || scanJob.status === "RUNNING";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {isLive && (
+        <ScanStatusPoller
+          scanJobId={scanJob.id}
+          initialStatus={scanJob.status}
+        />
+      )}
       <ResultsHeader scanJob={scanJob} findingCount={findings.length} />
       <ResultsView findings={rows} mode="scan" />
     </div>
