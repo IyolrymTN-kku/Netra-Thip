@@ -110,9 +110,11 @@ export const TOOLS: ToolDef[] = [
     desc: "Runs network/web/recon workflows with AI narration.",
     fields: [
       { id: "target", label: "Target", type: "text", placeholder: "apds.kku.ac.th", required: true, group: "Target" },
-      { id: "workflow_name", label: "Workflow", type: "select", options: ["network", "web_pentest", "recon"], default: "web_pentest", required: true, group: "Engine" },
-      { id: "ai_provider", label: "AI provider", type: "select", options: ["openai", "gemini", "claude"], default: "claude", group: "Engine" },
+      { id: "workflow_name", label: "Workflow", type: "select", options: ["network_pentest", "web_pentest", "recon", "adanvan_recon", "autonomus", "full_vuln_scan", "wordpress_aduit"], default: "web_pentest", required: true, group: "Engine" },
+      { id: "ai_provider", label: "AI provider", type: "select", options: ["openai", "gemini", "claude", "openrouter"], default: "openai", required: true,group: "Engine" },
       { id: "ai_api_key", label: "AI API Key", type: "secret", placeholder: "sk-…", group: "Engine", hint: "BYOK · never stored" },
+      { id: "model", label: "model", type: "secret", placeholder: "gemini-2.5", group: "Engine", hint: "BYOK · never stored" },
+      { id: "base_url", label: "Base URL", type: "secret", placeholder: "https://gen…", group: "Engine", hint: "BYOK · never stored" }
     ],
   },
   {

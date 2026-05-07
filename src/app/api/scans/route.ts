@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { toolName, projectId, target, assetType, parameters } = parsed.data;
+  const { toolName, projectId, target, assetType, parameters ,secrets: incomingSecrets} = parsed.data;
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, userId: session.user.id },
@@ -51,9 +51,10 @@ export async function POST(req: Request) {
   }
 
   const params: Record<string, unknown> = parameters ?? {};
+  const bodySecrets: Record<string, unknown> = (incomingSecrets as Record<string, unknown>) ?? {};
 
   // ─── BYOK secrets: encrypt + persist, keep plaintext map in-memory only ───
-  const secrets = extractSecrets(tool, params);
+  const secrets = extractSecrets(tool, bodySecrets); 
   await persistSecrets(projectId, secrets);
   const secretMap = secretsToPlaintextMap(secrets);
 
@@ -129,6 +130,7 @@ export async function POST(req: Request) {
     secrets: secretMap,
     fileRefs,
     callbackUrl: callbackUrl(req),
+    
   });
 
   return NextResponse.json({ scanJob }, { status: 201 });
