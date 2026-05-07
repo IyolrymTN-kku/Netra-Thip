@@ -24,7 +24,6 @@ const SEVERITY_OPTIONS: SeverityFilter[] = [
   "HIGH",
   "MEDIUM",
   "LOW",
-  "INFO",
 ];
 const STATUS_OPTIONS: StatusFilter[] = ["ALL", "OPEN", "RESOLVED", "IGNORED"];
 
