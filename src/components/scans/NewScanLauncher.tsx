@@ -48,7 +48,11 @@ function isFileFieldId(tool: ToolDef, fieldId: string): boolean {
 }
 
 // Build the parameters object that hits POST /api/scans.
-// 🟢 [แก้ไขแล้ว]: ดึงค่าจาก tool.fields เพื่อป้องกันค่า default ตกหล่น
+// - Secret fields are passed through to the server, which encrypts them via (not use)
+//   AES-256-GCM into the ApiKey table and strips them from `parameters` server-side. (not use)
+// - File fields are replaced with the upload ref returned by /api/scans/upload.(not use)
+
+// [แก้ไขแล้ว]: ดึงค่าจาก tool.fields เพื่อป้องกันค่า default ตกหล่น
 function buildParameters(
   tool: ToolDef,
   values: FormValues,
@@ -159,7 +163,7 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
       setPhase("uploading");
       const fileRefs = await uploadFileFields(tool, values);
 
-      // 🟢 [แก้ไขแล้ว]: แยก parameters และ secrets ออกจากกันก่อนยิง API
+      // [แก้ไขแล้ว]: แยก parameters และ secrets ออกจากกันก่อนยิง API
       const allParams = buildParameters(tool, values, fileRefs);
       const parameters: Record<string, unknown> = {};
       const secrets: Record<string, string> = {};
@@ -189,8 +193,8 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
           projectId,
           target: targetValue,
           assetType: target.assetType,
-          parameters, // ✅ ส่งเฉพาะ parameters ทั่วไป (ตอนนี้มี select ครบแล้ว)
-          secrets,    // ✅ ส่งเฉพาะ secrets แยกลงกระเป๋าของมันเอง
+          parameters, // ส่งเฉพาะ parameters ทั่วไป (ตอนนี้มี select ครบแล้ว)
+          secrets,    // ส่งเฉพาะ secrets แยกลงกระเป๋าของมันเอง
         }),
       });
       
