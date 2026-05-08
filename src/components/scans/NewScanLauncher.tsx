@@ -48,23 +48,31 @@ function isFileFieldId(tool: ToolDef, fieldId: string): boolean {
 }
 
 // Build the parameters object that hits POST /api/scans.
-// - Secret fields are passed through to the server, which encrypts them via
-//   AES-256-GCM into the ApiKey table and strips them from `parameters` server-side.
-// - File fields are replaced with the upload ref returned by /api/scans/upload.
+// 🟢 [แก้ไขแล้ว]: ดึงค่าจาก tool.fields เพื่อป้องกันค่า default ตกหล่น
 function buildParameters(
   tool: ToolDef,
   values: FormValues,
   fileRefs: Record<string, UploadedFileRef>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values)) {
+  
+  // วนลูปตาม Field ที่ Tool กำหนดไว้
+  for (const field of tool.fields) {
+    if (field.type === "file") continue; // File จัดการแยกต่างหากแล้ว
+
+    // ดึงค่าจาก values ถ้าไม่มีให้ดึง default
+    const value = values[field.id] ?? ("default" in field ? field.default : undefined);
+
     if (value === undefined || value === null || value === "") continue;
-    if (isFileFieldId(tool, key)) continue; // replaced below
-    out[key] = value;
+
+    out[field.id] = value;
   }
+
+  // เอา File Refs มารวม
   for (const [fieldId, ref] of Object.entries(fileRefs)) {
     out[fieldId] = ref;
   }
+  
   return out;
 }
 
@@ -151,6 +159,27 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
       setPhase("uploading");
       const fileRefs = await uploadFileFields(tool, values);
 
+      // 🟢 [แก้ไขแล้ว]: แยก parameters และ secrets ออกจากกันก่อนยิง API
+      const allParams = buildParameters(tool, values, fileRefs);
+      const parameters: Record<string, unknown> = {};
+      const secrets: Record<string, string> = {};
+
+      tool.fields.forEach((f) => {
+        const val = allParams[f.id];
+        if (val === undefined) return;
+
+        // ไม่เอา Target ลงไปซ้ำใน parameters
+        if (f.id === "target" || f.id === "target_ip" || f.id === "target_url" || f.id === "target_api_url") {
+          return;
+        }
+
+        if (f.type === "secret") {
+          secrets[f.id] = String(val);
+        } else {
+          parameters[f.id] = val;
+        }
+      });
+
       setPhase("queueing");
       const res = await fetch("/api/scans", {
         method: "POST",
@@ -160,9 +189,11 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
           projectId,
           target: targetValue,
           assetType: target.assetType,
-          parameters: buildParameters(tool, values, fileRefs),
+          parameters, // ✅ ส่งเฉพาะ parameters ทั่วไป (ตอนนี้มี select ครบแล้ว)
+          secrets,    // ✅ ส่งเฉพาะ secrets แยกลงกระเป๋าของมันเอง
         }),
       });
+      
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as
           | { error?: string }

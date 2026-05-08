@@ -10,6 +10,7 @@ export const CreateScanInput = z.object({
   target: z.string().min(1).max(2048),
   assetType: z.nativeEnum(AssetType),
   parameters: z.record(z.string(), z.unknown()).optional(),
+  secrets: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateScanInput = z.infer<typeof CreateScanInput>;

@@ -34,6 +34,7 @@ export default function RootLayout({
       lang="en" 
       data-theme="dark"
       className={`${inter.variable} ${kanit.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
     >
       <body>
         <SessionProvider>{children}</SessionProvider>
