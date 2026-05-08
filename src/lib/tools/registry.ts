@@ -146,7 +146,7 @@ export const TOOLS: ToolDef[] = [
     desc: "Detects API drift, BOLA & PII leakage.",
     fields: [
       { id: "target_api_url", label: "API URL", type: "url", placeholder: "http://localhost:6001", required: true, group: "Target" },
-      { id: "metlo_api_key", label: "Metlo API Key", type: "secret", required: true, group: "Auth" },
+      
     ],
   },
   {

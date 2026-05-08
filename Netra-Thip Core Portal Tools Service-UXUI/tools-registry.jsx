@@ -28,7 +28,6 @@ const TOOLS = [
     desc: 'Detects API drift, BOLA & PII leakage.',
     fields: [
       { id: 'target_api_url', label: 'API URL', type: 'url', placeholder: 'http://localhost:6001', required: true, group: 'Target' },
-      { id: 'metlo_api_key', label: 'Metlo API Key', type: 'secret', required: true, group: 'Auth' },
     ]},
   { id: 'sirius', name: 'Sirius Scan', tagline: 'Network & web vuln assessment', glyph: 'Si', color: '#06B6D4', category: 'VA Scan', cat: 2, runtime: '~ 12 min',
     desc: 'Combines port, web and full-stack VA scans.',
