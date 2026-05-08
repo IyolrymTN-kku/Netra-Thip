@@ -48,9 +48,9 @@ function isFileFieldId(tool: ToolDef, fieldId: string): boolean {
 }
 
 // Build the parameters object that hits POST /api/scans.
-// - Secret fields are passed through to the server, which encrypts them via (not use)
-//   AES-256-GCM into the ApiKey table and strips them from `parameters` server-side. (not use)
-// - File fields are replaced with the upload ref returned by /api/scans/upload.(not use)
+// - Secret fields are passed through to the server, which encrypts them via (Last Version not use fix later)
+//   AES-256-GCM into the ApiKey table and strips them from `parameters` server-side. (Last Version not use fix later)
+// - File fields are replaced with the upload ref returned by /api/scans/upload.(Last Version not use fix later)
 
 // [แก้ไขแล้ว]: ดึงค่าจาก tool.fields เพื่อป้องกันค่า default ตกหล่น
 function buildParameters(
