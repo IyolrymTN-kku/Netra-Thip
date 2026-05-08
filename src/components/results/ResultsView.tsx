@@ -13,7 +13,7 @@ interface ResultsViewProps {
   mode: "global" | "scan";
 }
 
-const SEVERITY_KEYS: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+const SEVERITY_KEYS: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
 const SEV_COLOR: Record<Severity, string> = {
   CRITICAL: "var(--sev-critical)",
@@ -23,8 +23,14 @@ const SEV_COLOR: Record<Severity, string> = {
   INFO: "var(--sev-info)",
 };
 
-export function ResultsView({ findings, mode }: ResultsViewProps) {
+export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const findings = useMemo(() => {
+    return rawFindings.map((f) =>
+      f.severity === "INFO" ? { ...f, severity: "LOW" as Severity } : f
+    );
+  }, [rawFindings]);
 
   const counts = useMemo(() => {
     const c: Record<Severity, number> = {
@@ -39,7 +45,7 @@ export function ResultsView({ findings, mode }: ResultsViewProps) {
   }, [findings]);
 
   const total = findings.length;
-  const donutData = SEVERITY_KEYS.filter((k) => k !== "INFO").map((k) => ({
+  const donutData = SEVERITY_KEYS.map((k) => ({
     color: SEV_COLOR[k],
     value: counts[k],
   }));
@@ -84,7 +90,7 @@ export function ResultsView({ findings, mode }: ResultsViewProps) {
         className="nt-stagger"
         style={{
           display: "grid",
-          gridTemplateColumns: "1.1fr 1fr 1fr 1fr 1fr",
+          gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr 1fr",
           gap: 14,
         }}
       >
@@ -118,7 +124,7 @@ export function ResultsView({ findings, mode }: ResultsViewProps) {
             >
               Severity Mix
             </div>
-            {SEVERITY_KEYS.filter((k) => k !== "INFO").map((k) => (
+            {SEVERITY_KEYS.map((k) => (
               <div
                 key={k}
                 style={{
@@ -175,6 +181,12 @@ export function ResultsView({ findings, mode }: ResultsViewProps) {
           value={counts.MEDIUM}
           color="#EAB308"
           icon="shield"
+        />
+        <ResultsKpi
+          label="Low"
+          value={counts.LOW}
+          color="var(--ok)"
+          icon="check"
         />
       </section>
 
