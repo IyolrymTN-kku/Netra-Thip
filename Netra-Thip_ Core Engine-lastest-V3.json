@@ -1,0 +1,539 @@
+{
+  "name": "Netra-Thip: Core Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scan-trigger",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -608,
+        512
+      ],
+      "id": "49d32840-0ec8-442d-88ae-9411c5fb1f66",
+      "name": "Webhook",
+      "webhookId": "708fb2bc-cb3e-491e-991e-3bf5d928f87f"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.toolName }}",
+                    "rightValue": "=autopentestx",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "ded79256-1206-40bc-bec2-600897016016"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "59aa46e0-d7a6-414f-82b8-f915d699c389",
+                    "leftValue": "={{ $json.body.toolName }}",
+                    "rightValue": "guardian",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "fd39826b-877f-4816-8b65-968046aedbd1",
+                    "leftValue": "={{ $json.body.toolName }}",
+                    "rightValue": "sirius",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c30cc061-72f3-4eb0-af8f-d4ba07617e0c",
+                    "leftValue": "={{ $json.body.toolName }}",
+                    "rightValue": "vuls",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        480
+      ],
+      "id": "a9c22223-38c6-4150-91bb-5109fc04b09a",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/api/scans/{{ $('Webhook').first().json.body.scanJobId }}/results",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Netra-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1504,
+        528
+      ],
+      "id": "d04c42c6-a459-41d8-b9c9-a372faaa80f6",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =========================================================================\n// UNIVERSAL MERGE NODE FOR: AutoPentest, Guardian, Sirius, Vuls\n// =========================================================================\n\n// === 1. HELPER FUNCTIONS (ฟังก์ชันตัวช่วยจัด Format) ===\nfunction safeText(value, fallback = \"\", maxLength = 1500) {\n  return String(value ?? fallback).slice(0, maxLength);\n}\n\nfunction normalizeSeverity(value, cvss = null) {\n  const sev = String(value || \"\").toUpperCase();\n  if ([\"CRITICAL\", \"HIGH\", \"MEDIUM\", \"LOW\", \"INFO\"].includes(sev)) return sev;\n\n  const score = Number(cvss);\n  if (!Number.isNaN(score)) {\n    if (score >= 9.0) return \"CRITICAL\";\n    if (score >= 7.0) return \"HIGH\";\n    if (score >= 4.0) return \"MEDIUM\";\n    if (score > 0.0) return \"LOW\";\n  }\n  return \"INFO\"; // Default\n}\n\nfunction normalizeStatus(value) {\n  const status = String(value || \"OPEN\").toUpperCase();\n  if ([\"OPEN\", \"FAILED\", \"IGNORED\", \"CLOSED\", \"RESOLVED\"].includes(status)) return status;\n  return \"OPEN\";\n}\n\nfunction buildSummary(findings) {\n  return {\n    total: findings.length,\n    returned: findings.length,\n    critical: findings.filter(f => f.severity === \"CRITICAL\").length,\n    high: findings.filter(f => f.severity === \"HIGH\").length,\n    medium: findings.filter(f => f.severity === \"MEDIUM\").length,\n    low: findings.filter(f => f.severity === \"LOW\").length,\n    info: findings.filter(f => f.severity === \"INFO\").length\n  };\n}\n\n// ฟังก์ชันสำหรับดึงข้อมูลจาก Node อื่นอย่างปลอดภัย (ป้องกัน n8n Error ข้าม Branch)\nfunction getSafeNodeData(nodeName) {\n  try {\n    const node = $(nodeName);\n    return node && node.first() ? node.first().json : null;\n  } catch (e) {\n    return null;\n  }\n}\n\n// === 2. INITIALIZE VARIABLES (ตั้งค่าตัวแปรเริ่มต้น) ===\nconst inputJson = $input.first().json || {};\nlet formattedFindings = [];\nlet finalTarget = \"N/A\";\nlet finalToolName = \"unknown-tool\";\nlet finalStatus = \"completed\";\nlet finalMeta = {};\nlet finalSummary = {};\n\n// พยายามดึงข้อมูล Webhook ตามโครงสร้างเดิม\nconst wh1 = getSafeNodeData(\"Webhook1\"); // Vuls\nconst wh2 = getSafeNodeData(\"Webhook2\"); // Guardian/Autopentest\nconst wh3 = getSafeNodeData(\"Webhook3\"); // Sirius\n\n// === 3. DETECT TOOL NAME (วิเคราะห์ว่าข้อมูลมาจากเครื่องมือไหน) ===\nif (inputJson.toolName) finalToolName = inputJson.toolName.toLowerCase();\nelse if (wh2 && wh2.body && wh2.body.toolName) finalToolName = wh2.body.toolName.toLowerCase(); \nelse if (wh3 && wh3.body && wh3.body.toolName) finalToolName = \"sirius\";\nelse if (wh1 && wh1.body && wh1.body.toolName) finalToolName = \"vuls\";\n// Fallbacks\nif (finalToolName.includes(\"guardian\")) finalToolName = \"guardian\";\nif (finalToolName.includes(\"autopentest\")) finalToolName = \"autopentest\";\nif (inputJson.stdout && finalToolName === \"unknown-tool\") finalToolName = \"guardian\"; \n\n// === 4. PROCESS BY TOOL (แยกการทำงานตามเครื่องมือ) ===\ntry {\n  // ---------------------------------------------------------\n  // [A] AUTOPENTEST & GUARDIAN\n  // ---------------------------------------------------------\n  if (finalToolName === \"guardian\" || finalToolName === \"autopentest\") {\n    const rawStdout = inputJson.stdout ? inputJson.stdout.trim() : \"\";\n    finalTarget = (wh2 && wh2.body && wh2.body.target) ? wh2.body.target : \"Unknown Target\";\n    finalToolName = (wh2 && wh2.body && wh2.body.toolName) ? wh2.body.toolName : finalToolName;\n\n    if (rawStdout) {\n      const rawData = JSON.parse(rawStdout);\n      const sourceFindings = rawData.vulnerabilities || rawData.findings;\n\n      // กรณีที่ 1: มี Findings ปกติ\n      if (sourceFindings && Array.isArray(sourceFindings) && sourceFindings.length > 0) {\n        sourceFindings.forEach(vuln => {\n          formattedFindings.push({\n            title: safeText(vuln.title || vuln.name, \"Unknown Vulnerability\", 200),\n            severity: normalizeSeverity(vuln.severity),\n            description: safeText(vuln.description, \"No description provided.\"),\n            remediation: safeText(vuln.remediation || vuln.solution, \"Review findings and apply patches.\"),\n            target: finalTarget,\n            status: \"OPEN\",\n            tool: finalToolName\n          });\n        });\n      } \n      // กรณีที่ 2: Findings ว่างเปล่า แต่ AI เขียนสรุปมาให้\n      else if (rawData.ai_decisions && Array.isArray(rawData.ai_decisions) && rawData.ai_decisions.length > 0) {\n        let combinedAiReport = \"\";\n        rawData.ai_decisions.forEach(decision => {\n          if (decision.decision) combinedAiReport += decision.decision + \"\\n\\n\";\n        });\n        formattedFindings.push({\n          title: \"Guardian AI Security Assessment Report\",\n          severity: \"HIGH\",\n          description: \"AI Generated Report:\\n\" + safeText(combinedAiReport, \"\", 3000),\n          remediation: \"Please review the detailed AI text in the description for specific remediation steps.\",\n          target: finalTarget,\n          status: \"OPEN\",\n          tool: finalToolName\n        });\n      }\n    }\n  }\n\n  // ---------------------------------------------------------\n  // [B] SIRIUS\n  // ---------------------------------------------------------\n  else if (finalToolName === \"sirius\") {\n    const hostReq = getSafeNodeData(\"HTTP Request7\") || inputJson;\n    const webhookBody = (wh3 && wh3.body) ? wh3.body : {};\n\n    finalTarget = hostReq.ip || webhookBody.target || (webhookBody.parameters && webhookBody.parameters.target_ip) || \"N/A\";\n    const vulnerabilities = Array.isArray(hostReq.vulnerabilities) ? hostReq.vulnerabilities : [];\n\n    vulnerabilities.forEach((vuln, index) => {\n      const riskScore = vuln.riskScore ?? vuln.risk_score ?? vuln.cvss ?? vuln.cvssScore ?? null;\n      formattedFindings.push({\n        title: safeText(vuln.title || vuln.name || vuln.vid, `Sirius Finding ${index + 1}`, 200),\n        severity: normalizeSeverity(null, riskScore),\n        description: safeText(vuln.description, \"No description provided.\"),\n        remediation: safeText(vuln.remediation || vuln.solution, \"Review Sirius finding and apply recommended patches.\"),\n        target: finalTarget,\n        status: \"OPEN\",\n        cvss: riskScore !== null ? Number(riskScore) : null,\n        tool: \"sirius\",\n        evidence: {\n          source: \"sirius\",\n          host_ip: hostReq.ip,\n          hostname: hostReq.hostname,\n          os: hostReq.os,\n          osversion: hostReq.osversion,\n          ports: hostReq.ports || [],\n          vulnerability: vuln\n        },\n        raw: vuln\n      });\n    });\n  }\n\n  // ---------------------------------------------------------\n  // [C] VULS\n  // ---------------------------------------------------------\n  else if (finalToolName === \"vuls\") {\n    const webhookBody = (wh1 && wh1.body) ? wh1.body : {};\n    const prepared = getSafeNodeData(\"Prepare Vuls Payload\") || {};\n\n    finalTarget = inputJson.target || prepared.target || webhookBody.target || (webhookBody.parameters && webhookBody.parameters.target_ip) || \"N/A\";\n    const scanJobId = (inputJson.meta && inputJson.meta.scanJobId) || prepared.scanJobId || webhookBody.scanJobId || null;\n\n    let vulsFindings = Array.isArray(inputJson.findings) ? inputJson.findings : [];\n\n    vulsFindings.forEach(finding => {\n       formattedFindings.push({\n         title: safeText(finding.title, \"Unknown Finding\", 200),\n         severity: normalizeSeverity(finding.severity, finding.cvss),\n         description: safeText(finding.description, \"Vuls detected a vulnerability on the target host.\", 1500),\n         remediation: safeText(finding.remediation, \"Review affected packages and apply vendor security updates.\", 1000),\n         target: safeText(finding.target, finalTarget, 200),\n         status: normalizeStatus(finding.status),\n         cvss: finding.cvss !== undefined && finding.cvss !== null && !Number.isNaN(Number(finding.cvss)) ? Number(finding.cvss) : null,\n         tool: \"vuls\"\n       });\n    });\n\n    if (formattedFindings.length === 0) {\n      formattedFindings.push({\n        title: \"VULS Scan Completed\",\n        severity: \"INFO\",\n        description: \"Vuls completed successfully, but no vulnerabilities were found or no CVE entries were parsed from the report.\",\n        remediation: \"Check whether vulnerability databases are available, whether the target OS is supported, and whether packages were detected.\",\n        target: finalTarget,\n        status: \"OPEN\",\n        cvss: null,\n        tool: \"vuls\"\n      });\n    }\n\n    const hasFailedFinding = formattedFindings.some(f => f.status === \"FAILED\");\n    finalStatus = (inputJson.status === \"failed\" || hasFailedFinding) ? \"failed\" : \"completed\";\n\n    finalMeta = {\n      tool: \"vuls\",\n      target: finalTarget,\n      serverLabel: (inputJson.meta && inputJson.meta.serverLabel) || prepared.serverLabel || null,\n      scanJobId: scanJobId,\n      exitCode: (inputJson.meta && inputJson.meta.exitCode !== undefined) ? inputJson.meta.exitCode : null\n    };\n    finalSummary = inputJson.summary || buildSummary(formattedFindings);\n  }\n\n} catch (error) {\n  // ---------------------------------------------------------\n  // [D] ERROR HANDLING (รองรับกรณีข้อมูลผิดพลาด)\n  // ---------------------------------------------------------\n  formattedFindings = [{\n     title: \"Data Parsing Error\",\n     severity: \"INFO\",\n     description: \"Failed to parse data for tool \" + finalToolName + \". Error: \" + error.message,\n     remediation: \"Check n8n Code node and raw tool output.\",\n     target: finalTarget,\n     status: \"IGNORED\",\n     tool: finalToolName\n  }];\n  finalStatus = \"failed\";\n}\n\n// === 5. FINAL PAYLOAD CONSTRUCTION ===\n// สร้าง Summary ทิ้งท้ายให้ครบถ้วนก่อนส่งให้ Next.js\nif (Object.keys(finalSummary).length === 0) {\n    finalSummary = buildSummary(formattedFindings);\n}\n\nconst payload = {\n  toolName: finalToolName,\n  target: finalTarget,\n  status: finalStatus,\n  summary: finalSummary,\n  findings: formattedFindings,\n  meta: finalMeta\n};\n\n// คืนค่าออกไปให้ n8n นำไปใช้ต่อ\nreturn [{ json: payload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        528
+      ],
+      "id": "19de70b4-e6b0-4df4-839d-989a97d5bb60",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "command": "=cd /home/kali/Desktop/AutoPentestX && \\\nsource .venv/bin/activate && \\\necho \"yes\" | python3 main.py -t {{$node[\"Webhook\"].json[\"body\"][\"target\"]}} -n \"NetraThip-{{$node[\"Webhook\"].json[\"body\"][\"scanJobId\"]}}\" && \\\ncat $(ls -td reports/*.json | head -n 1)"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        320,
+        -80
+      ],
+      "id": "f4fd84ed-f07c-4408-9420-f19f61b8dfa3",
+      "name": "AutoPentestX",
+      "credentials": {
+        "sshPassword": {
+          "id": "X0U09QsSQ8BFWBbd",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "value": "={{ $('Webhook').first().json.body.scanJobId }}",
+        "dataPropertyName": "signature"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        528
+      ],
+      "id": "5221c752-6e96-4ae6-a18b-05eaf9ebef64",
+      "name": "Crypto",
+      "credentials": {
+        "crypto": {
+          "id": "GJBnseidMmG2yCYJ",
+          "name": "Crypto account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $(\"Webhook1\").first().json.body || {};\nconst params = body.parameters || {};\n\n// รับค่าจากหน้าเว็บ\nconst targetIp =\n  params.target_ip ||\n  body.target ||\n  body.parameters?.target ||\n  \"\";\n\nconst sshUser = params.ssh_user || \"\";\nconst sshPort = Number(params.ssh_port || 22);\n\n// สร้างชื่อ server สำหรับ config.toml\nconst serverLabel =\n  params.server_label ||\n  `target_${targetIp.replaceAll(\".\", \"_\").replaceAll(\"-\", \"_\")}`;\n\n// ใช้ private key กลางของระบบเสมอ\n// ไม่ต้องรับ ssh_private_key จาก user\nconst authMethod = \"private_key\";\n\n// path นี้คือ path ภายใน Vuls Docker container\n// ต้องตรงกับตอน docker run ที่ mount .ssh เข้า /root/.ssh\nconst sshKeyPath = \"/root/.ssh/id_rsa\";\n\nconst sudoRequired = Boolean(params.sudo_required);\nconst legacySsh = Boolean(params.legacy_ssh);\n\nif (!targetIp) {\n  throw new Error(\"Missing target_ip for VULS\");\n}\n\nif (!sshUser) {\n  throw new Error(\"Missing ssh_user for VULS\");\n}\n\nreturn [\n  {\n    json: {\n      scanJobId: body.scanJobId,\n      toolName: \"vuls\",\n\n      target: targetIp,\n      serverLabel,\n\n      sshUser,\n      sshPort,\n\n      // backend/n8n จะใช้ key กลาง ไม่ใช่ key จาก user\n      authMethod,\n      sshKeyPath,\n\n      sudoRequired,\n      legacySsh\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        928
+      ],
+      "id": "f953f3ef-774f-423b-a74a-32bbe95dab08",
+      "name": "Prepare Vuls Payload"
+    },
+    {
+      "parameters": {
+        "command": "=set -e\ncd \"/mnt/e/va tools/vulsNewNewNew/vuls\"\n\nmkdir -p results\nmkdir -p .ssh\n\nssh-keyscan -p \"{{ $json.sshPort || 22 }}\" \"{{ $json.target }}\" >> .ssh/known_hosts 2>/dev/null || true\nchmod 600 .ssh/id_rsa || true\nchmod 644 .ssh/known_hosts || true\n\ncat > config.toml <<EOF\n[servers]\n\n[servers.{{ $json.serverLabel || \"target\" }}]\nhost = \"{{ $json.target }}\"\nport = \"{{ $json.sshPort || 22 }}\"\nuser = \"{{ $json.sshUser }}\"\nkeyPath = \"/root/.ssh/id_rsa\"\nEOF\n\ndocker run --rm -i \\\n  -v \"$PWD:/vuls\" \\\n  -v \"$PWD/.ssh:/root/.ssh\" \\\n  vuls/vuls configtest\n\ndocker run --rm -i \\\n  -v \"$PWD:/vuls\" \\\n  -v \"$PWD/.ssh:/root/.ssh\" \\\n  vuls/vuls scan\n\ndocker run --rm -i \\\n  -v \"$PWD:/vuls\" \\\n  vuls/vuls report -format-json -to-localfile\n\nREPORT_FILE=\"$(find results -type f -name \"*.json\" | sort | tail -n 1)\"\n\necho \"###VULS_JSON_START###\"\n\nif [ -z \"$REPORT_FILE\" ]; then\n  echo '{\"toolName\":\"vuls\",\"target\":\"{{ $json.target }}\",\"status\":\"completed\",\"findings\":[{\"title\":\"VULS JSON Report Not Found\",\"severity\":\"LOW\",\"description\":\"Vuls scan completed, but no JSON report file was found.\",\"remediation\":\"Check Vuls report generation and results directory.\",\"target\":\"{{ $json.target }}\",\"status\":\"OPEN\",\"cvss\":0,\"tool\":\"vuls\"}],\"summary\":{\"total\":1,\"returned\":1,\"critical\":0,\"high\":0,\"medium\":0,\"low\":1,\"info\":0},\"meta\":{\"tool\":\"vuls\",\"serverLabel\":\"{{ $json.serverLabel }}\",\"scanJobId\":\"{{ $json.scanJobId }}\",\"reportFile\":null}}'\nelse\n  python3 - \"$REPORT_FILE\" <<'PY'\nimport json\nimport re\nimport sys\n\nreport_file = sys.argv[1]\n\nwith open(report_file, \"r\", encoding=\"utf-8\", errors=\"ignore\") as f:\n    data = json.load(f)\n\n\ndef to_float(value):\n    try:\n        if value is None:\n            return None\n\n        if isinstance(value, (int, float)):\n            n = float(value)\n            return n if 0 <= n <= 10 else None\n\n        if isinstance(value, str):\n            value = value.strip()\n\n            # CVSS vector ไม่ใช่ score เช่น CVSS:3.1/AV:N/...\n            if value.startswith(\"CVSS:\"):\n                return None\n\n            n = float(value)\n            return n if 0 <= n <= 10 else None\n\n        return None\n    except Exception:\n        return None\n\n\ndef normalize_severity(value):\n    sev = str(value or \"\").upper().strip()\n\n    if sev == \"CRITICAL\":\n        return \"CRITICAL\"\n    if sev in [\"HIGH\", \"IMPORTANT\"]:\n        return \"HIGH\"\n    if sev in [\"MEDIUM\", \"MODERATE\"]:\n        return \"MEDIUM\"\n    if sev in [\"LOW\", \"NEGLIGIBLE\"]:\n        return \"LOW\"\n    if sev in [\"INFO\", \"INFORMATIONAL\", \"UNKNOWN\", \"NONE\"]:\n        return None\n\n    return None\n\n\ndef severity_rank(sev):\n    return {\n        \"CRITICAL\": 4,\n        \"HIGH\": 3,\n        \"MEDIUM\": 2,\n        \"LOW\": 1\n    }.get(sev, 0)\n\n\ndef severity_from_score(score):\n    n = to_float(score)\n\n    if n is None:\n        return \"LOW\"\n\n    if n >= 9.0:\n        return \"CRITICAL\"\n    if n >= 7.0:\n        return \"HIGH\"\n    if n >= 4.0:\n        return \"MEDIUM\"\n    if n > 0.0:\n        return \"LOW\"\n\n    return \"LOW\"\n\n\ndef walk(obj):\n    if isinstance(obj, dict):\n        yield obj\n        for value in obj.values():\n            yield from walk(value)\n\n    elif isinstance(obj, list):\n        for item in obj:\n            yield from walk(item)\n\n\ndef pick_score(cve):\n    \"\"\"\n    ใช้เฉพาะ field ที่เป็น CVSS score จริง ๆ\n    ไม่ใช้ key กว้าง ๆ อย่าง value เฉย ๆ เพราะทำให้ severity เพี้ยน\n    \"\"\"\n    if not isinstance(cve, dict):\n        return None\n\n    scores = []\n\n    trusted_score_keys = {\n        \"cvss3score\",\n        \"cvss2score\",\n        \"cvssscore\",\n        \"maxcvssscore\",\n        \"maxcvss3score\",\n        \"maxcvss2score\",\n        \"basescore\",\n        \"base_score\"\n    }\n\n    preferred_top_level = [\n        \"maxCvssScore\",\n        \"maxCvss3Score\",\n        \"maxCvss2Score\",\n        \"cvss3Score\",\n        \"cvss2Score\",\n        \"cvssScore\"\n    ]\n\n    # 1) top-level ก่อน\n    for key in preferred_top_level:\n        n = to_float(cve.get(key))\n        if n is not None:\n            scores.append(n)\n\n    # 2) เดิน object หาเฉพาะ key ที่ชัดว่าเป็น CVSS score\n    for obj in walk(cve):\n        if not isinstance(obj, dict):\n            continue\n\n        for key, value in obj.items():\n            key_l = str(key).lower()\n\n            if key_l in trusted_score_keys:\n                n = to_float(value)\n                if n is not None:\n                    scores.append(n)\n\n    # 3) อ่าน score จาก structure ที่มักเจอใน CVSS metrics\n    for obj in walk(cve):\n        if not isinstance(obj, dict):\n            continue\n\n        # เช่น {\"cvssData\": {\"baseScore\": 8.8}}\n        cvss_data = obj.get(\"cvssData\") or obj.get(\"cvss_data\")\n        if isinstance(cvss_data, dict):\n            n = to_float(cvss_data.get(\"baseScore\") or cvss_data.get(\"base_score\"))\n            if n is not None:\n                scores.append(n)\n\n    if not scores:\n        return None\n\n    # เลือกคะแนนสูงสุดจาก CVSS score ที่เชื่อถือได้\n    return max(scores)\n\n\ndef pick_severity(cve, score):\n    \"\"\"\n    ให้ score เป็นตัวหลัก เพราะ Vuls summary อิง CVSS score เป็นหลัก\n    ใช้ severity string เฉพาะกรณีไม่มี score เท่านั้น\n    \"\"\"\n    if score is not None:\n        return severity_from_score(score)\n\n    severities = []\n\n    if isinstance(cve, dict):\n        for obj in walk(cve):\n            if not isinstance(obj, dict):\n                continue\n\n            for key, value in obj.items():\n                key_l = str(key).lower()\n\n                # อ่านเฉพาะ field ที่เป็น severity จริง ๆ\n                if key_l in [\n                    \"severity\",\n                    \"cvss3severity\",\n                    \"cvss2severity\",\n                    \"threatseverity\"\n                ] or key_l.endswith(\"severity\"):\n                    sev = normalize_severity(value)\n                    if sev:\n                        severities.append(sev)\n\n    if severities:\n        return sorted(severities, key=severity_rank, reverse=True)[0]\n\n    return \"LOW\"\n\n\ndef pick_summary(cve):\n    if not isinstance(cve, dict):\n        return \"Vuls detected a vulnerability on the target host.\"\n\n    preferred_keys = [\"summary\", \"description\", \"title\"]\n\n    for obj in walk(cve):\n        if not isinstance(obj, dict):\n            continue\n\n        for key in preferred_keys:\n            if obj.get(key):\n                return str(obj.get(key))[:1500]\n\n    return \"Vuls detected a vulnerability on the target host.\"\n\n\ndef iter_servers(obj):\n    if isinstance(obj, list):\n        for i, item in enumerate(obj):\n            if isinstance(item, dict):\n                yield item.get(\"serverName\") or item.get(\"server_name\") or f\"server_{i}\", item\n        return\n\n    if isinstance(obj, dict):\n        if any(k in obj for k in [\"scannedCves\", \"cves\", \"vulnerabilities\"]):\n            yield obj.get(\"serverName\") or obj.get(\"server_name\") or \"target\", obj\n            return\n\n        for name, value in obj.items():\n            if isinstance(value, dict):\n                value = dict(value)\n                value.setdefault(\"serverName\", name)\n                yield name, value\n\n\nfindings = []\n\nfor server_name, server in iter_servers(data):\n    target = (\n        server.get(\"ip\")\n        or server.get(\"host\")\n        or server.get(\"serverName\")\n        or server_name\n    )\n\n    scanned = (\n        server.get(\"scannedCves\")\n        or server.get(\"cves\")\n        or server.get(\"vulnerabilities\")\n        or {}\n    )\n\n    if isinstance(scanned, list):\n        items = []\n        for cve in scanned:\n            if isinstance(cve, dict):\n                cve_id = (\n                    cve.get(\"cveID\")\n                    or cve.get(\"cveId\")\n                    or cve.get(\"vid\")\n                    or cve.get(\"id\")\n                    or cve.get(\"title\")\n                    or \"Unknown CVE\"\n                )\n                items.append((cve_id, cve))\n\n    elif isinstance(scanned, dict):\n        items = list(scanned.items())\n\n    else:\n        items = []\n\n    for cve_id, cve in items:\n        if not isinstance(cve, dict):\n            cve = {}\n\n        score = pick_score(cve)\n        severity = pick_severity(cve, score)\n\n        findings.append({\n            \"title\": str(cve_id)[:200],\n            \"severity\": severity,\n            \"description\": pick_summary(cve),\n            \"remediation\": str(\n                cve.get(\"remediation\")\n                or cve.get(\"solution\")\n                or \"Review affected packages and apply vendor security updates.\"\n            )[:1000],\n            \"target\": str(target)[:200],\n            \"status\": \"OPEN\",\n            \"cvss\": float(score) if score is not None else 0,\n            \"tool\": \"vuls\"\n        })\n\n\nif not findings:\n    findings.append({\n        \"title\": \"VULS Scan Completed\",\n        \"severity\": \"LOW\",\n        \"description\": \"Vuls completed successfully, but no CVE entries were parsed from the report.\",\n        \"remediation\": \"Check whether vulnerability databases are available, whether the target OS is supported, and whether packages were detected.\",\n        \"target\": \"{{ $json.target }}\",\n        \"status\": \"OPEN\",\n        \"cvss\": 0,\n        \"tool\": \"vuls\"\n    })\n\n\nsummary = {\n    \"total\": len(findings),\n    \"returned\": len(findings),\n    \"critical\": sum(1 for f in findings if f[\"severity\"] == \"CRITICAL\"),\n    \"high\": sum(1 for f in findings if f[\"severity\"] == \"HIGH\"),\n    \"medium\": sum(1 for f in findings if f[\"severity\"] == \"MEDIUM\"),\n    \"low\": sum(1 for f in findings if f[\"severity\"] == \"LOW\"),\n    \"info\": sum(1 for f in findings if f[\"severity\"] == \"INFO\")\n}\n\npayload = {\n    \"toolName\": \"vuls\",\n    \"target\": \"{{ $json.target }}\",\n    \"status\": \"completed\",\n    \"findings\": findings,\n    \"summary\": summary,\n    \"meta\": {\n        \"tool\": \"vuls\",\n        \"serverLabel\": \"{{ $json.serverLabel }}\",\n        \"scanJobId\": \"{{ $json.scanJobId }}\",\n        \"reportFile\": report_file\n    }\n}\n\nprint(json.dumps(payload, ensure_ascii=False))\nPY\nfi\n\necho \"###VULS_JSON_END###\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        336,
+        928
+      ],
+      "id": "c4ed3933-5bd5-4ee4-bd6c-5d58e88961dc",
+      "name": "Execute a command"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\nconst webhookBody = $(\"Webhook1\").first().json.body || {};\nconst prepared = $(\"Prepare Vuls Payload\").first().json || {};\n\nconst target =\n  input.target ||\n  prepared.target ||\n  webhookBody.target ||\n  webhookBody.parameters?.target_ip ||\n  \"N/A\";\n\nconst scanJobId =\n  input.meta?.scanJobId ||\n  prepared.scanJobId ||\n  webhookBody.scanJobId ||\n  null;\n\nfunction safeText(value, fallback = \"\", maxLength = 1500) {\n  return String(value ?? fallback).slice(0, maxLength);\n}\n\nfunction toNumber(value) {\n  if (value === null || value === undefined || value === \"\") return null;\n\n  const n = Number(value);\n  return Number.isNaN(n) ? null : n;\n}\n\nfunction severityFromScore(score) {\n  const n = toNumber(score);\n\n  if (n === null) return \"INFO\";\n  if (n >= 9.0) return \"CRITICAL\";\n  if (n >= 7.0) return \"HIGH\";\n  if (n >= 4.0) return \"MEDIUM\";\n  if (n > 0.0) return \"LOW\";\n\n  return \"INFO\";\n}\n\nfunction normalizeSeverity(value, cvss = null) {\n  const sev = String(value || \"\").toUpperCase().trim();\n\n  if (sev === \"CRITICAL\") return \"CRITICAL\";\n  if (sev === \"HIGH\" || sev === \"IMPORTANT\") return \"HIGH\";\n  if (sev === \"MEDIUM\" || sev === \"MODERATE\") return \"MEDIUM\";\n  if (sev === \"LOW\" || sev === \"NEGLIGIBLE\") return \"LOW\";\n  if (sev === \"INFO\" || sev === \"INFORMATIONAL\") return severityFromScore(cvss);\n\n  return severityFromScore(cvss);\n}\n\nfunction normalizeStatus(value) {\n  const status = String(value || \"OPEN\").toUpperCase();\n\n  if ([\"OPEN\", \"FAILED\", \"IGNORED\", \"CLOSED\", \"RESOLVED\"].includes(status)) {\n    return status;\n  }\n\n  return \"OPEN\";\n}\n\nfunction extractJsonBlockFromStdout(stdout) {\n  if (!stdout || typeof stdout !== \"string\") return null;\n\n  const startMarker = \"###VULS_JSON_START###\";\n  const endMarker = \"###VULS_JSON_END###\";\n\n  const start = stdout.indexOf(startMarker);\n  const end = stdout.indexOf(endMarker);\n\n  if (start >= 0 && end > start) {\n    const jsonText = stdout.slice(start + startMarker.length, end).trim();\n\n    if (!jsonText) return null;\n\n    try {\n      return JSON.parse(jsonText);\n    } catch (error) {\n      return {\n        toolName: \"vuls\",\n        target,\n        status: \"completed\",\n        findings: [\n          {\n            title: \"VULS JSON Parsing Error\",\n            severity: \"INFO\",\n            description:\n              \"Vuls output contained a JSON marker, but the JSON block could not be parsed. Error: \" +\n              error.message,\n            remediation:\n              \"Check the Execute Command node output between ###VULS_JSON_START### and ###VULS_JSON_END###.\",\n            target,\n            status: \"IGNORED\",\n            cvss: null,\n            tool: \"vuls\"\n          }\n        ],\n        summary: null,\n        meta: {}\n      };\n    }\n  }\n\n  return null;\n}\n\nfunction normalizeFinding(finding) {\n  const cvss = toNumber(finding.cvss);\n  const severity = normalizeSeverity(finding.severity, cvss);\n\n  return {\n    title: safeText(finding.title, \"Unknown Finding\", 200),\n    severity,\n    description: safeText(\n      finding.description,\n      \"Vuls detected a vulnerability on the target host.\",\n      1500\n    ),\n    remediation: safeText(\n      finding.remediation,\n      \"Review affected packages and apply vendor security updates.\",\n      1000\n    ),\n    target: safeText(finding.target, target, 200),\n    status: normalizeStatus(finding.status),\n    cvss,\n    tool: \"vuls\"\n  };\n}\n\nfunction buildSummary(findings) {\n  return {\n    total: findings.length,\n    returned: findings.length,\n    critical: findings.filter(f => f.severity === \"CRITICAL\").length,\n    high: findings.filter(f => f.severity === \"HIGH\").length,\n    medium: findings.filter(f => f.severity === \"MEDIUM\").length,\n    low: findings.filter(f => f.severity === \"LOW\").length,\n    info: findings.filter(f => f.severity === \"INFO\").length\n  };\n}\n\n// รองรับทั้ง input ที่เป็น payload แล้ว และ input ที่เป็น stdout จาก Execute Command\nconst parsedPayload = extractJsonBlockFromStdout(input.stdout || \"\");\nconst source = parsedPayload || input;\n\nlet findings = Array.isArray(source.findings) ? source.findings : [];\n\nfindings = findings.map(normalizeFinding);\n\nif (findings.length === 0) {\n  findings = [\n    normalizeFinding({\n      title: \"VULS Scan Completed\",\n      severity: \"INFO\",\n      description:\n        \"Vuls completed successfully, but no vulnerabilities were found or no CVE entries were parsed from the report.\",\n      remediation:\n        \"Check whether vulnerability databases are available, whether the target OS is supported, and whether packages were detected.\",\n      target,\n      status: \"OPEN\",\n      cvss: null,\n      tool: \"vuls\"\n    })\n  ];\n}\n\nconst hasFailedFinding = findings.some(f => f.status === \"FAILED\");\n\nconst status =\n  source.status === \"failed\" || hasFailedFinding\n    ? \"failed\"\n    : \"completed\";\n\nconst summary = buildSummary(findings);\n\nconst payload = {\n  toolName: \"vuls\",\n  target: source.target || target,\n  status,\n  findings,\n  summary,\n  meta: {\n    tool: \"vuls\",\n    target: source.target || target,\n    serverLabel:\n      source.meta?.serverLabel ||\n      prepared.serverLabel ||\n      null,\n    scanJobId:\n      source.meta?.scanJobId ||\n      scanJobId,\n    exitCode:\n      source.meta?.exitCode !== undefined\n        ? source.meta.exitCode\n        : input.code ?? null\n  }\n};\n\nreturn [\n  {\n    json: payload\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        928
+      ],
+      "id": "f8542360-b8aa-4c0e-8426-2c80a173a613",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "content": "## VULS\n",
+        "height": 240,
+        "width": 688
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        32,
+        864
+      ],
+      "id": "a3c91974-d39d-43a7-a62d-358babd9adce",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "command": "=cd /home/kali/Desktop/guardian-cli/guardian-cli-main && \\\nsource venv/bin/activate && \\\n\n\nexport T_PROV=\"{{$node[\"Webhook2\"].json[\"body\"][\"parameters\"][\"ai_provider\"]}}\" && \\\nexport T_MODEL=\"{{$node[\"Webhook2\"].json[\"body\"][\"secrets\"][\"model\"]}}\" && \\\nexport T_KEY=\"{{$node[\"Webhook2\"].json[\"body\"][\"secrets\"][\"ai_api_key\"]}}\" && \\\nexport T_URL=\"{{$node[\"Webhook2\"].json[\"body\"][\"secrets\"][\"base_url\"]}}\" && \\\n\n\nexport OPENAI_API_KEY=\"$T_KEY\" && \\\nexport ANTHROPIC_API_KEY=\"$T_KEY\" && \\\nexport GEMINI_API_KEY=\"$T_KEY\" && \\\nif [ -n \"$T_URL\" ]; then export OPENAI_BASE_URL=\"$T_URL\"; fi && \\\n\n\nsed -i -E \"s|^[[:space:]]*provider:.*|  provider: ${T_PROV}|g\" config/guardian.yaml && \\\nsed -i -E \"s|^[[:space:]]*model:.*|    model: \\\"${T_MODEL}\\\"|g\" config/guardian.yaml && \\\nsed -i -E \"s|^[[:space:]]*api_key:.*|    api_key: ${T_KEY}|g\" config/guardian.yaml && \\\nif [ -n \"$T_URL\" ]; then \\\n  sed -i -E \"s|^[[:space:]]*base_url:.*|    base_url: \\\"${T_URL}\\\"|g\" config/guardian.yaml; \\\nfi && \\\n\n\npython -m cli.main workflow run \\\n  --name {{$node[\"Webhook2\"].json[\"body\"][\"parameters\"][\"workflow_name\"]}} \\\n  --target {{$node[\"Webhook2\"].json[\"body\"][\"target\"]}} > /dev/null 2>&1 &&\\\n\ncat $(ls -td reports/session_*.json | head -n 1)"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        320,
+        176
+      ],
+      "id": "8c02c5a0-4a42-4d75-aaba-812bd860aba8",
+      "name": "Guardian",
+      "retryOnFail": true,
+      "executeOnce": false,
+      "credentials": {
+        "sshPassword": {
+          "id": "X0U09QsSQ8BFWBbd",
+          "name": "SSH Password account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Workflow Lastest",
+        "height": 1344,
+        "width": 2560,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -768,
+        -128
+      ],
+      "typeVersion": 1,
+      "id": "7be1ff13-2f61-4a02-ae16-5695d9cc802e",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Sirius\n",
+        "height": 288,
+        "width": 688
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        32,
+        448
+      ],
+      "id": "c1a16a4a-4903-4d1d-b1a1-1aaa8609c233",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:9898/app/scan",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"X-API-Key\": \"f48ace3dcf26db85c389c3ffc85c77837228f2af14ad964b6d56a7b93d731c28\",\n  \"Content-Type\": \"application/json\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"id\": \"{{ $('Webhook3').first().json.body.scanJobId }}\",\n  \"targets\": [\n    {\n      \"value\": \"{{ $('Webhook3').first().json.body.parameters.target_ip || $('Webhook3').first().json.body.target }}\",\n      \"type\": \"{{ $('Webhook3').first().json.body.parameters.target_type || 'single_ip' }}\"\n    }\n  ],\n  \"options\": {\n    \"template\": \"{{ $('Webhook3').first().json.body.parameters.scan_profile || 'quick' }}\"\n  },\n  \"priority\": 3\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        128,
+        528
+      ],
+      "id": "944c1a09-7bdb-4439-b4fb-4bd0e821f944",
+      "name": "HTTP Request6"
+    },
+    {
+      "parameters": {
+        "amount": "={{ 10 }}",
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        320,
+        528
+      ],
+      "id": "0d236925-87fe-4b7f-8946-7b0930f9a973",
+      "name": "Wait1",
+      "webhookId": "d2572924-4ec6-4291-988b-7eb1cd1d901b"
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:9898/host/{{ $(\"Switch3\").item.json.body.target }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"X-API-Key\": \"f48ace3dcf26db85c389c3ffc85c77837228f2af14ad964b6d56a7b93d731c28\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        512,
+        528
+      ],
+      "id": "357a21b5-3e69-4a65-a95e-fd8565f3f965",
+      "name": "HTTP Request7"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "AutoPentestX",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardian",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request6",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Vuls Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Crypto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AutoPentestX": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crypto": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Vuls Payload": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardian": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request6": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request7": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e6b983b7-2c9e-409e-898a-8f16a319b0b9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f51d0326da5b4d85d5403819b1d2c98dea91ada51a43f1fd94e8d1cc7d4127e2"
+  },
+  "id": "iRpKOM8DLgZS1NIJ",
+  "tags": []
+}
