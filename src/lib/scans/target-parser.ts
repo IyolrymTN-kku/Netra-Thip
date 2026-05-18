@@ -1,8 +1,11 @@
 export function expandTargets(input: string): string[] {
   const targets = new Set<string>();
 
-  // Split by comma or newline
-  const parts = input.split(/[\n,]+/);
+  // Normalize spaces around hyphens to support "IP - IP" or "IP - 50" formats
+  const normalizedInput = input.replace(/\s*-\s*/g, "-");
+
+  // Split by comma, newline, or any whitespace
+  const parts = normalizedInput.split(/[\s,]+/);
 
   for (let part of parts) {
     part = part.trim();
@@ -11,6 +14,11 @@ export function expandTargets(input: string): string[] {
     // Check if CIDR
     if (part.includes("/")) {
       const expanded = expandCIDR(part);
+      expanded.forEach((ip) => targets.add(ip));
+    }
+    // Check if Wildcard (e.g., 192.168.1.*)
+    else if (part.includes("*")) {
+      const expanded = expandWildcard(part);
       expanded.forEach((ip) => targets.add(ip));
     }
     // Check if Range (e.g., 192.168.1.1-50 or 192.168.1.1-192.168.1.50)
@@ -61,6 +69,22 @@ function expandCIDR(cidr: string): string[] {
     result.push(longToIp(i));
   }
   return result;
+}
+
+function expandWildcard(wildcard: string): string[] {
+  let cidr = wildcard;
+  if (wildcard.endsWith(".*.*.*")) {
+    cidr = wildcard.replace(".*.*.*", ".0.0.0/8");
+  } else if (wildcard.endsWith(".*.*")) {
+    cidr = wildcard.replace(".*.*", ".0.0/16");
+  } else if (wildcard.endsWith(".*")) {
+    cidr = wildcard.replace(".*", ".0/24");
+  }
+  
+  if (cidr !== wildcard) {
+    return expandCIDR(cidr);
+  }
+  return [wildcard];
 }
 
 function expandRange(range: string): string[] {
