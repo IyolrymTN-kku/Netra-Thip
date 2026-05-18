@@ -93,7 +93,7 @@ export const TOOLS: ToolDef[] = [
     runtime: "~ 18 min",
     desc: "AI-orchestrated reconnaissance → exploit chain.",
     fields: [
-      { id: "target_ip", label: "Target IP", type: "ip", placeholder: "192.168.15.131", required: true, group: "Target" },
+      { id: "target_ip", label: "Target IP", type: "ip", placeholder: "192.168.1.1, 10.0.0.0/24", required: true, group: "Target", hint: "Supports single IP, CIDR, Range, Wildcard (*), or Space/Comma separated" },
       { id: "scan_mode", label: "Scan mode", type: "select", options: ["Stealth", "Balanced", "Aggressive"], default: "Balanced", group: "Engine" },
       { id: "operator_name", label: "Operator name", type: "text", placeholder: "Aroon S.", group: "Engine" },
     ],
@@ -109,7 +109,7 @@ export const TOOLS: ToolDef[] = [
     runtime: "~ 6 min",
     desc: "Runs network/web/recon workflows with AI narration.",
     fields: [
-      { id: "target", label: "Target", type: "text", placeholder: "apds.kku.ac.th", required: true, group: "Target" },
+      { id: "target", label: "Target", type: "text", placeholder: "example.com, 192.168.1.1-50", required: true, group: "Target", hint: "Supports domain, single IP, CIDR, Range, Wildcard (*), or Space/Comma separated" },
       { id: "workflow_name", label: "Workflow", type: "select", options: ["network_pentest", "web_pentest", "recon", "adanvan_recon", "autonomus", "full_vuln_scan", "wordpress_aduit"], default: "web_pentest", required: true, group: "Engine" },
       { id: "ai_provider", label: "AI provider", type: "select", options: ["openai", "gemini", "claude", "openrouter"], default: "openai", required: true,group: "Engine" },
       { id: "ai_api_key", label: "AI API Key", type: "secret", placeholder: "sk-…", group: "Engine", hint: "BYOK · never stored" },
@@ -128,7 +128,7 @@ export const TOOLS: ToolDef[] = [
     runtime: "~ 8 min",
     desc: "Agent-less SSH-based vulnerability scanner.",
     fields: [
-      { id: "target_ip", label: "Target IP", type: "ip", placeholder: "192.168.159.130", required: true, group: "Target" },
+      { id: "target_ip", label: "Target IP", type: "ip", placeholder: "192.168.1.1, 10.0.0.0/24", required: true, group: "Target", hint: "Supports single IP, CIDR, Range, Wildcard (*), or Space/Comma separated" },
       { id: "ssh_user", label: "SSH user", type: "text", placeholder: "ubuntu", required: true, group: "Auth" },
       { id: "ssh_port", label: "SSH port", type: "number", default: 22, min: 1, max: 65535, group: "Auth" },
     ],
