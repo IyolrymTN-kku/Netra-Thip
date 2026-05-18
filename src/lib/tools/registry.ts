@@ -123,14 +123,19 @@ export const TOOLS: ToolDef[] = [
     color: "#EAB308",
     category: "VA Scan",
     cat: 1,
-    runtime: "~ 8 min",
+    runtime: "~ 10 min",
     desc: "Agent-less SSH-based vulnerability scanner.",
     fields: [
-      { id: "target_ip", label: "Target IP", type: "ip", placeholder: "192.168.159.130", required: true, group: "Target" },
-      { id: "ssh_user", label: "SSH user", type: "text", placeholder: "ubuntu", required: true, group: "Auth" },
-      { id: "ssh_port", label: "SSH port", type: "number", default: 22, min: 1, max: 65535, group: "Auth" },
+      { id: "target_ip", label: "Target IP", type: "textarea", placeholder: "192.168.87.138\n192.168.87.139\n192.168.87.140", required: true, group: "Target", hint: "Enter one or more Linux target IP addresses. Separate multiple IPs by new line or comma."},
+      { id: "ssh_user", label: "SSH user", type: "textarea", placeholder: "admin\nubuntu", required: true, group: "Auth", hint: "Enter SSH usernames in the same order as Target IPs. Example: line 1 username is used for line 1 IP."},
+      { id: "ssh_port", label: "SSH port", type: "number", default: 22, required: true, group: "Auth"},
     ],
   },
+
+// { id: "target_ips", label: "Target IPs", type: "textarea", placeholder: "192.168.87.138\n192.168.87.139\n192.168.87.140", required: true, group: "Target", hint: "Enter one or more Linux target IP addresses. Separate multiple IPs by new line or comma."},
+// { id: "ssh_users", label: "SSH Usernames", type: "textarea", placeholder: "admin\nubuntu", required: true, group: "Auth", hint: "Enter SSH usernames in the same order as Target IPs. Example: line 1 username is used for line 1 IP."},
+// { id: "ssh_port", label: "SSH Port", type: "number", default: 22, required: true, group: "Auth"}
+
   // ─── Cat 2 — API ───
   {
     id: "metlo",
