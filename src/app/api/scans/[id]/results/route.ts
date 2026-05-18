@@ -69,6 +69,7 @@ export async function POST(
         remediation: f.remediation,
         target: f.target,
         cvss: f.cvss ?? null,
+        cves: f.cves ? (f.cves as any) : null,
         status: f.status ?? "OPEN",
       })),
     });

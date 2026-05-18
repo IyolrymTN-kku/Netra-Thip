@@ -140,6 +140,7 @@ model Finding {
   remediation String        @db.Text
   target      String
   cvss        Float?
+  cves        Json?         // Array of CVE objects: [{ cveId, cvss, severity, description }]
   status      FindingStatus @default(OPEN)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt

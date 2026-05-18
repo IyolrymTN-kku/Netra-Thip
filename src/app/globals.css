@@ -131,7 +131,7 @@ body {
 .nt-app {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: var(--rail-w, 240px) 1fr;
+  grid-template-columns: var(--rail-w, 240px) minmax(0, 1fr);
   grid-template-rows: 56px 1fr;
   grid-template-areas:
     "rail nav"
