@@ -146,26 +146,25 @@ export const TOOLS: ToolDef[] = [
     desc: "Detects API drift, BOLA & PII leakage.",
     fields: [
       { id: "target_api_url", label: "API URL", type: "url", placeholder: "http://localhost:6001", required: true, group: "Target" },
-      { id: "metlo_api_key", label: "Metlo API Key", type: "secret", required: true, group: "Auth" },
+      
     ],
   },
   {
-    id: "sirius",
-    name: "Sirius Scan",
-    tagline: "Network & web vuln assessment",
-    glyph: "Si",
-    color: "#06B6D4",
-    category: "VA Scan",
-    cat: 2,
-    runtime: "~ 12 min",
-    desc: "Combines port, web and full-stack VA scans.",
-    fields: [
-      { id: "target_ip", label: "Target IP", type: "ip", placeholder: "192.168.1.1, 10.0.0.0/24", required: true, group: "Target", hint: "Supports single IP, CIDR, Range, Wildcard (*), or Space/Comma separated" },
-      { id: "target_url", label: "Target URL", type: "url", placeholder: "https://example.com", group: "Target" },
-      { id: "scan_type", label: "Scan type", type: "select", options: ["Web", "Port", "Full"], default: "Full", required: true, group: "Engine" },
-      { id: "port_range", label: "Port range", type: "text", placeholder: "1-65535", group: "Engine" },
-    ],
-  },
+  id: "sirius",
+  name: "Sirius Scan",
+  tagline: "Network vulnerability scanner",
+  glyph: "Si",
+  color: "#06B6D4",
+  category: "VA Scan",
+  cat: 2,
+  runtime: "~ 12 min",
+  desc: "Runs Sirius Scan through its REST API with target type and scan profile options.",
+  fields: [
+    { id: "target_ip",label: "Target IP / Host", type: "text", placeholder: "192.168.x.x", required: true, group: "Target", hint: "IP address, CIDR range, IP range, or domain name to scan."},
+    { id: "target_type", label: "Target Type", type: "select", options: ["single_ip", "cidr", "ip_range", "domain"], default: "single_ip", required: true, group: "Target", hint: "This value is sent to Sirius as targets[].type." },
+    { id: "scan_profile", label: "Scan Profile", type: "select", options: ["Quick Scan", "High Risk Scan", "All Scripts Scan", "Full Scan (Network + Agent)", "Agent Only Scan"], default: "quick", required: true, group: "Engine", hint: "This value is sent to Sirius as options.template." },
+  ],
+},
   // ─── Cat 3 — Upload ───
   {
     id: "caido",
