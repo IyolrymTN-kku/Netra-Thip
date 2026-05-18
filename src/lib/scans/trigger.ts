@@ -12,8 +12,10 @@ interface FileRef {
 }
 
 export interface TriggerArgs {
-  scanJob: { id: string; projectId: string; toolName: string };
-  target: string;
+  jobs: Array<{
+    scanJob: { id: string; projectId: string; toolName: string };
+    target: string;
+  }>;
   assetType: AssetType;
   parameters: Record<string, unknown>;
   secrets: Record<string, string>;
@@ -58,51 +60,57 @@ async function markRunning(scanJobId: string): Promise<void> {
 // Fire-and-forget. Caller does `void triggerScanAsync(...)` and returns 201
 // immediately. State transitions PENDING -> RUNNING (on 2xx) or PENDING -> FAILED
 // (on timeout / non-2xx) happen out of band.
-export async function triggerScanAsync(args: TriggerArgs): Promise<void> {
+export async function triggerScansAsync(args: TriggerArgs): Promise<void> {
   const url = process.env.N8N_WEBHOOK_URL;
   if (!url) {
-    await markFailed(
-      args.scanJob.id,
-      "N8N_WEBHOOK_URL not configured",
-    );
+    for (const job of args.jobs) {
+      await markFailed(
+        job.scanJob.id,
+        "N8N_WEBHOOK_URL not configured",
+      );
+    }
     return;
   }
 
-  const signature = signScanJob(args.scanJob.id);
-  const payload = {
-    scanJobId: args.scanJob.id,
-    projectId: args.scanJob.projectId,
-    toolName: args.scanJob.toolName,
-    target: args.target,
+  const payload = args.jobs.map((job) => ({
+    scanJobId: job.scanJob.id,
+    projectId: job.scanJob.projectId,
+    toolName: job.scanJob.toolName,
+    target: job.target,
     assetType: args.assetType,
     parameters: args.parameters,
     secrets: args.secrets,
     fileRefs: args.fileRefs,
     callbackUrl: args.callbackUrl,
-    signature,
-  };
+    signature: signScanJob(job.scanJob.id),
+  }));
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        [SIGNATURE_HEADER]: signature,
       },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(TRIGGER_TIMEOUT_MS),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      await markFailed(
-        args.scanJob.id,
-        `n8n responded ${res.status}: ${text.slice(0, 200)}`,
-      );
+      for (const job of args.jobs) {
+        await markFailed(
+          job.scanJob.id,
+          `n8n responded ${res.status}: ${text.slice(0, 200)}`,
+        );
+      }
       return;
     }
-    await markRunning(args.scanJob.id);
+    for (const job of args.jobs) {
+      await markRunning(job.scanJob.id);
+    }
   } catch (err) {
     const reason = err instanceof Error ? err.message : "unknown trigger error";
-    await markFailed(args.scanJob.id, reason);
+    for (const job of args.jobs) {
+      await markFailed(job.scanJob.id, reason);
+    }
   }
 }

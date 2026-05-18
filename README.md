@@ -8,11 +8,11 @@
 
 Netra-Thip is an internal platform inspired by DefectDojo and Faraday, built to consolidate the output of multiple specialised security tools into a single workflow. It orchestrates seven tools across three execution strategies:
 
-| Category | Strategy | Tools |
-| --- | --- | --- |
-| **1. CLI** | Python / Go binaries executed in ephemeral Docker containers via n8n | AutoPentestX, Guardian-cli, VULS |
-| **2. REST API** | Long-running services queried via HTTP | Metlo, Sirius Scan |
-| **3. File Ingestion** | Operator uploads JSON exports | Caido, SILENTCHAIN AI |
+| Category                    | Strategy                                                             | Tools                            |
+| --------------------------- | -------------------------------------------------------------------- | -------------------------------- |
+| **1. CLI**            | Python / Go binaries executed in ephemeral Docker containers via n8n | AutoPentestX, Guardian-cli, VULS |
+| **2. REST API**       | Long-running services queried via HTTP                               | Metlo, Sirius Scan               |
+| **3. File Ingestion** | Operator uploads JSON exports                                        | Caido, SILENTCHAIN AI            |
 
 All raw output is normalised into a standard `NormalizedFinding` schema, stored in MongoDB, and surfaced through the Next.js dashboard. AI-driven triage and remediation use **BYOK (Bring Your Own Key)** — operator-supplied API keys are encrypted at rest with AES-256-GCM.
 
@@ -20,19 +20,19 @@ All raw output is normalised into a standard `NormalizedFinding` schema, stored 
 
 ## 2. Tech Stack
 
-| Layer | Choice |
-| --- | --- |
-| **Frontend / Backend** | [Next.js 15](https://nextjs.org/) (App Router, Turbopack, React 19) |
-| **Language** | TypeScript 5 (strict) |
-| **Styling** | [Tailwind CSS v4](https://tailwindcss.com/) with custom design tokens, Google Fonts (Prompt, JetBrains Mono) |
-| **Auth** | [NextAuth v5 (Auth.js)](https://authjs.dev/) with the Prisma adapter and JWT sessions |
-| **Relational DB** | [PostgreSQL 16](https://www.postgresql.org/) via [Prisma 5](https://www.prisma.io/) |
-| **Document store** | [MongoDB 6](https://www.mongodb.com/) for raw tool output and `NormalizedFinding` documents |
-| **Orchestration** | [n8n](https://n8n.io/) (hidden from the UI, triggered via Core Engine webhooks) |
-| **Tool execution** | Docker (ephemeral containers per scan) |
-| **Encryption** | Node `crypto` AES-256-GCM (BYOK API keys) |
-| **Password hashing** | bcryptjs (cost 12) |
-| **Testing** | [Vitest](https://vitest.dev/) |
+| Layer                        | Choice                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Frontend / Backend** | [Next.js 15](https://nextjs.org/) (App Router, Turbopack, React 19)                                          |
+| **Language**           | TypeScript 5 (strict)                                                                                     |
+| **Styling**            | [Tailwind CSS v4](https://tailwindcss.com/) with custom design tokens, Google Fonts (Prompt, JetBrains Mono) |
+| **Auth**               | [NextAuth v5 (Auth.js)](https://authjs.dev/) with the Prisma adapter and JWT sessions                        |
+| **Relational DB**      | [PostgreSQL 16](https://www.postgresql.org/) via [Prisma 5](https://www.prisma.io/)                             |
+| **Document store**     | [MongoDB 6](https://www.mongodb.com/) for raw tool output and `NormalizedFinding` documents                |
+| **Orchestration**      | [n8n](https://n8n.io/) (hidden from the UI, triggered via Core Engine webhooks)                              |
+| **Tool execution**     | Docker (ephemeral containers per scan)                                                                    |
+| **Encryption**         | Node `crypto` AES-256-GCM (BYOK API keys)                                                               |
+| **Password hashing**   | bcryptjs (cost 12)                                                                                        |
+| **Testing**            | [Vitest](https://vitest.dev/)                                                                                |
 
 ### Architecture highlights
 
@@ -44,12 +44,12 @@ All raw output is normalised into a standard `NormalizedFinding` schema, stored 
 
 ## 3. Prerequisites
 
-| Requirement | Version | Notes |
-| --- | --- | --- |
-| **Node.js** | `>= 20.x` | The project pins to Node 20 LTS. Newer LTS releases also work. |
-| **npm** | `>= 10.x` | Ships with Node 20. |
-| **Docker Desktop** | Latest stable | Provides the PostgreSQL and MongoDB containers via `docker-compose.yml`. |
-| **OpenSSL** | Any | Used to generate `NEXTAUTH_SECRET` and `ENCRYPTION_KEY`. (Bundled with Git for Windows / macOS / most Linux distros.) |
+| Requirement              | Version       | Notes                                                                                                                     |
+| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Node.js**        | `>= 20.x`   | The project pins to Node 20 LTS. Newer LTS releases also work.                                                            |
+| **npm**            | `>= 10.x`   | Ships with Node 20.                                                                                                       |
+| **Docker Desktop** | Latest stable | Provides the PostgreSQL and MongoDB containers via `docker-compose.yml`.                                                |
+| **OpenSSL**        | Any           | Used to generate `NEXTAUTH_SECRET` and `ENCRYPTION_KEY`. (Bundled with Git for Windows / macOS / most Linux distros.) |
 
 ---
 
@@ -79,7 +79,7 @@ cp .env.example .env
 Generate cryptographic material:
 
 ```bash
-# NEXTAUTH_SECRET — base64, 32 bytes
+ # NEXTAUTH_SECRET — base64, 32 bytes
 openssl rand -base64 32
 
 # ENCRYPTION_KEY — exactly 64 hex characters (32 bytes) for AES-256-GCM
@@ -88,15 +88,15 @@ openssl rand -hex 32
 
 Paste the values into `.env`. At minimum the following must be set before the first run:
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string. The default value matches `docker-compose.yml`. |
-| `MONGODB_URI` | MongoDB connection string. |
-| `NEXTAUTH_SECRET` | JWT signing secret for NextAuth. |
-| `NEXTAUTH_URL` | Public base URL of the app (e.g. `http://localhost:3000`). |
-| `ENCRYPTION_KEY` | 64-hex-char master key for BYOK encryption. **Rotate carefully — encrypted records cannot be read with a different key.** |
-| `ADMIN_EMAIL` | Email for the seeded admin user. |
-| `ADMIN_PASSWORD` | Password for the seeded admin user. **Change before any non-dev use.** |
+| Variable            | Purpose                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`    | PostgreSQL connection string. The default value matches `docker-compose.yml`.                                                 |
+| `MONGODB_URI`     | MongoDB connection string.                                                                                                      |
+| `NEXTAUTH_SECRET` | JWT signing secret for NextAuth.                                                                                                |
+| `NEXTAUTH_URL`    | Public base URL of the app (e.g.`http://localhost:3000`).                                                                     |
+| `ENCRYPTION_KEY`  | 64-hex-char master key for BYOK encryption.**Rotate carefully — encrypted records cannot be read with a different key.** |
+| `ADMIN_EMAIL`     | Email for the seeded admin user.                                                                                                |
+| `ADMIN_PASSWORD`  | Password for the seeded admin user.**Change before any non-dev use.**                                                     |
 
 > ⚠️ Never commit a populated `.env` to Git. Only `.env.example` is tracked.
 
@@ -126,6 +126,7 @@ This creates every table defined in [`prisma/schema.prisma`](prisma/schema.prism
 ```bash
 npx prisma db seed
 ```
+
 ```bash
 npx prisma studio //check localhost:5555 database admin web-ui
 ```
@@ -144,15 +145,15 @@ Open [http://localhost:3000](http://localhost:3000). You will be redirected to `
 
 ## 5. Available Scripts
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Starts the Next.js dev server with Turbopack on port 3000. |
-| `npm run build` | Type-checks, lints, and produces a production build. |
-| `npm run start` | Serves the production build (run `build` first). |
-| `npm run lint` | Runs `next lint`. |
-| `npm run test` | Runs the Vitest test suite (encryption round-trip + tamper detection). |
-| `npm run test:watch` | Vitest in watch mode. |
-| `npm run db:seed` | Re-runs the admin seed script. |
+| Command                | What it does                                                           |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `npm run dev`        | Starts the Next.js dev server with Turbopack on port 3000.             |
+| `npm run build`      | Type-checks, lints, and produces a production build.                   |
+| `npm run start`      | Serves the production build (run `build` first).                     |
+| `npm run lint`       | Runs `next lint`.                                                    |
+| `npm run test`       | Runs the Vitest test suite (encryption round-trip + tamper detection). |
+| `npm run test:watch` | Vitest in watch mode.                                                  |
+| `npm run db:seed`    | Re-runs the admin seed script.                                         |
 
 ---
 
@@ -211,14 +212,14 @@ netra-thip-portal/
 
 ### Data model (Postgres)
 
-| Table | Phase | Purpose |
-| --- | --- | --- |
-| `User`, `Account`, `Session`, `VerificationToken` | 0 | NextAuth identity |
-| `Project` | 0 | Workspace owning assets, keys, jobs, findings |
-| `Asset` | 0 | Scan target (`@@unique(projectId, target)`) |
-| `ApiKey` | 0/3 | BYOK key, AES-256-GCM ciphertext + iv + authTag |
-| `ScanJob` | 0/2 | Tool invocation; tracks `PENDING → RUNNING → COMPLETED \| FAILED` |
-| `Finding` | 5 | Normalised vulnerability record per scan job |
+| Table                                                     | Phase | Purpose                                                              |
+| --------------------------------------------------------- | ----- | -------------------------------------------------------------------- |
+| `User`, `Account`, `Session`, `VerificationToken` | 0     | NextAuth identity                                                    |
+| `Project`                                               | 0     | Workspace owning assets, keys, jobs, findings                        |
+| `Asset`                                                 | 0     | Scan target (`@@unique(projectId, target)`)                        |
+| `ApiKey`                                                | 0/3   | BYOK key, AES-256-GCM ciphertext + iv + authTag                      |
+| `ScanJob`                                               | 0/2   | Tool invocation; tracks `PENDING → RUNNING → COMPLETED \| FAILED` |
+| `Finding`                                               | 5     | Normalised vulnerability record per scan job                         |
 
 ---
 
@@ -226,14 +227,14 @@ netra-thip-portal/
 
 Every change — feature, bug fix, or refactor — must follow this **6-step pipeline**. The pipeline keeps changes auditable, reviewable, and aligned with our security posture.
 
-| # | Step | Description |
-| --- | --- | --- |
-| 1 | **Ask** | Clarify intent, constraints, and scope before touching code. |
-| 2 | **Plan** | Draft the architectural / UI / schema changes. Reach alignment before implementation. |
-| 3 | **Implement** | Write production-ready code that fulfils the plan. |
-| 4 | **Review Diff** | Audit for security flaws, TypeScript errors, architectural drift, unused code, and sensitive values. |
-| 5 | **Run / Test** | Validate locally — `npm run test`, `npm run build`, manual UI verification, and Prisma migration sanity. |
-| 6 | **Commit** | Conventional commit message, atomic scope, no co-mingled refactors. |
+| # | Step                  | Description                                                                                                  |
+| - | --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 1 | **Ask**         | Clarify intent, constraints, and scope before touching code.                                                 |
+| 2 | **Plan**        | Draft the architectural / UI / schema changes. Reach alignment before implementation.                        |
+| 3 | **Implement**   | Write production-ready code that fulfils the plan.                                                           |
+| 4 | **Review Diff** | Audit for security flaws, TypeScript errors, architectural drift, unused code, and sensitive values.         |
+| 5 | **Run / Test**  | Validate locally —`npm run test`, `npm run build`, manual UI verification, and Prisma migration sanity. |
+| 6 | **Commit**      | Conventional commit message, atomic scope, no co-mingled refactors.                                          |
 
 Use `CLAUDE.md` as the canonical reference for the architecture rules that govern these reviews.
 
@@ -243,11 +244,11 @@ Use `CLAUDE.md` as the canonical reference for the architecture rules that gover
 
 The Core Engine talks to n8n through three shared trust boundaries. All three rely on the **same** HMAC-SHA256 secret (`N8N_CALLBACK_SECRET`) — no per-route credentials.
 
-| Direction | Route | When |
-| --- | --- | --- |
-| Portal → n8n | `POST $N8N_WEBHOOK_URL` | When the operator submits a new scan. Payload includes `scanJobId`, target, sanitised parameters, decrypted BYOK secrets (in-memory only), and a callback URL. The trigger is fire-and-forget with a 10 s timeout — `PENDING → RUNNING` on 2xx, `PENDING → FAILED` on timeout. |
-| n8n → Portal | `POST /api/scans/[id]/results` | When a tool produces normalised findings. Bulk-inserts into the `Finding` table and atomically flips the scan to `COMPLETED`. Caps at 5 000 findings per call. |
-| n8n → Portal | `POST /api/scans/callback` | When a tool fails, or succeeds with zero findings. Status-only update (`COMPLETED` or `FAILED`). |
+| Direction     | Route                            | When                                                                                                                                                                                                                                                                                    |
+| ------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Portal → n8n | `POST $N8N_WEBHOOK_URL`        | When the operator submits a new scan. Payload includes `scanJobId`, target, sanitised parameters, decrypted BYOK secrets (in-memory only), and a callback URL. The trigger is fire-and-forget with a 10 s timeout — `PENDING → RUNNING` on 2xx, `PENDING → FAILED` on timeout. |
+| n8n → Portal | `POST /api/scans/[id]/results` | When a tool produces normalised findings. Bulk-inserts into the `Finding` table and atomically flips the scan to `COMPLETED`. Caps at 5 000 findings per call.                                                                                                                      |
+| n8n → Portal | `POST /api/scans/callback`     | When a tool fails, or succeeds with zero findings. Status-only update (`COMPLETED` or `FAILED`).                                                                                                                                                                                    |
 
 For both inbound routes n8n must echo the `X-Netra-Signature` header set by the trigger. Mismatch → `401`. Already-terminal jobs → `409`.
 

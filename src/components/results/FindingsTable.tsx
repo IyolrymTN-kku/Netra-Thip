@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import type { FindingStatus, Severity } from "@prisma/client";
 import { Icon } from "@/components/icons/Icon";
 import { SevBadge } from "./SevBadge";
@@ -24,7 +24,6 @@ const SEVERITY_OPTIONS: SeverityFilter[] = [
   "HIGH",
   "MEDIUM",
   "LOW",
-  "INFO",
 ];
 const STATUS_OPTIONS: StatusFilter[] = ["ALL", "OPEN", "RESOLVED", "IGNORED"];
 
@@ -97,6 +96,29 @@ export function FindingsTable({
   const [sevFilter, setSevFilter] = useState<SeverityFilter>("ALL");
   const [toolFilter, setToolFilter] = useState<ToolFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [groupByTarget, setGroupByTarget] = useState(false);
+  const [expandedTargets, setExpandedTargets] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // Prevent row selection when clicking expand
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleTarget = (e: React.MouseEvent, target: string) => {
+    e.stopPropagation();
+    setExpandedTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(target)) next.delete(target);
+      else next.add(target);
+      return next;
+    });
+  };
 
   const tools: ToolFilter[] = useMemo(
     () => ["ALL", ...Array.from(new Set(rows.map((r) => r.scanJob.toolName)))],
@@ -113,6 +135,162 @@ export function FindingsTable({
         .filter((r) => statusFilter === "ALL" || r.status === statusFilter),
     [rows, sevFilter, toolFilter, statusFilter],
   );
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, FindingRow[]>();
+    for (const r of filtered) {
+      if (!groups.has(r.target)) groups.set(r.target, []);
+      groups.get(r.target)!.push(r);
+    }
+    const sevOrder = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFO: 0 };
+    return Array.from(groups.entries()).map(([target, findings]) => {
+      let maxSev: Severity = "INFO";
+      let maxScore = -1;
+      for (const f of findings) {
+        if (sevOrder[f.severity] > maxScore) {
+          maxScore = sevOrder[f.severity];
+          maxSev = f.severity;
+        }
+      }
+      return { target, findings, maxSev };
+    }).sort((a, b) => sevOrder[b.maxSev] - sevOrder[a.maxSev]);
+  }, [filtered]);
+
+  const renderFindingRow = (r: FindingRow) => {
+    const sel = r.id === selectedId;
+    const isExpanded = expandedRows.has(r.id);
+    const cves = (r.cves as any[]) || [];
+    const hasCves = cves.length > 0;
+
+    return (
+      <Fragment key={r.id}>
+        <tr
+          onClick={() => onSelect(r)}
+          style={{
+            cursor: "pointer",
+            background: sel ? "var(--nt-blue-50)" : "transparent",
+            borderBottom: "1px solid var(--line)",
+          }}
+        >
+          <td
+            style={{ padding: "10px 12px", textAlign: "center" }}
+            onClick={(e) => hasCves && toggleExpand(e, r.id)}
+          >
+            {hasCves ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 24,
+                  height: 24,
+                  borderRadius: 4,
+                  background: isExpanded ? "var(--line)" : "transparent",
+                  cursor: "pointer",
+                  transition: "transform 0.2s",
+                  transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                }}
+              >
+                <Icon name="chevronRight" size={14} color="var(--ink-3)" />
+              </div>
+            ) : null}
+          </td>
+          <td style={{ padding: "10px 16px" }}>
+            <SevBadge severity={r.severity} />
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <span
+              style={{
+                fontWeight: 600,
+                color: "var(--ink)",
+                display: "inline-block",
+                maxWidth: 280,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "middle",
+              }}
+            >
+              {r.title}
+            </span>
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <CvssBar score={r.cvss} severity={r.severity} />
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <span
+              style={{
+                fontSize: 11.5,
+                fontWeight: 500,
+                color: "var(--ink-2)",
+              }}
+            >
+              {r.scanJob.toolName}
+            </span>
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <span
+              className="mono"
+              style={{ fontSize: 11, color: "var(--ink-2)" }}
+            >
+              {r.target}
+            </span>
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <StatusPill status={r.status} />
+          </td>
+          <td
+            style={{
+              padding: "10px 16px",
+              textAlign: "right",
+            }}
+          >
+            <span
+              suppressHydrationWarning
+              className="mono"
+              style={{ fontSize: 11, color: "var(--ink-3)" }}
+            >
+              {relativeAge(r.createdAt)}
+            </span>
+          </td>
+        </tr>
+
+        {isExpanded && hasCves && (
+          <tr style={{ background: "var(--surface-2)" }}>
+            <td colSpan={8} style={{ padding: 0, borderBottom: "1px solid var(--line)" }}>
+              <div style={{ padding: "16px 24px 16px 64px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                  Associated CVEs ({cves.length})
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--surface-1)", borderRadius: 6, overflow: "hidden", border: "1px solid var(--line)" }}>
+                  <tbody>
+                    {cves.map((cve: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: i < cves.length - 1 ? "1px solid var(--line)" : "none" }}>
+                        <td style={{ padding: "8px 12px", width: "160px" }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>{cve.cveId}</span>
+                        </td>
+                        <td style={{ padding: "8px 12px", width: "120px" }}>
+                          <SevBadge severity={cve.severity} />
+                        </td>
+                        <td style={{ padding: "8px 12px", width: "140px" }}>
+                          <CvssBar score={cve.cvss} severity={cve.severity} />
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <span style={{ fontSize: 12.5, color: "var(--ink-2)", display: "block", maxWidth: 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {cve.description}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
 
   return (
     <div className="nt-card" style={{ overflow: "hidden" }}>
@@ -144,10 +322,18 @@ export function FindingsTable({
               <span className="mono tnum">{rows.length}</span>
             </div>
           </div>
-          <button type="button" className="btn btn-sm" disabled>
-            <Icon name="download" size={12} />
-            Export
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-4)", textTransform: "uppercase", letterSpacing: "0.10em" }}>View Mode</span>
+              <button type="button" onClick={() => setGroupByTarget(false)} className="nt-chip-opt" data-on={!groupByTarget} style={{height: 24, fontSize: 11}}>Flat List</button>
+              <button type="button" onClick={() => setGroupByTarget(true)} className="nt-chip-opt" data-on={groupByTarget} style={{height: 24, fontSize: 11}}>Group by Target</button>
+            </div>
+            <div style={{ width: 1, height: 16, background: "var(--line)" }} />
+            <button type="button" className="btn btn-sm" disabled>
+              <Icon name="download" size={12} />
+              Export
+            </button>
+          </div>
         </div>
         <FilterRow
           label="Severity"
@@ -192,12 +378,13 @@ export function FindingsTable({
                 top: 0,
               }}
             >
+              <th style={{ width: 40, borderBottom: "1px solid var(--line)" }} />
               <th
                 style={{
                   padding: "8px 16px",
                   textAlign: "left",
                   borderBottom: "1px solid var(--line)",
-                  width: 110,
+                  width: 100,
                 }}
               >
                 Severity
@@ -216,7 +403,7 @@ export function FindingsTable({
                   padding: "8px 12px",
                   textAlign: "left",
                   borderBottom: "1px solid var(--line)",
-                  width: 110,
+                  width: 100,
                 }}
               >
                 CVSS
@@ -226,7 +413,7 @@ export function FindingsTable({
                   padding: "8px 12px",
                   textAlign: "left",
                   borderBottom: "1px solid var(--line)",
-                  width: 140,
+                  width: 120,
                 }}
               >
                 Tool
@@ -236,7 +423,7 @@ export function FindingsTable({
                   padding: "8px 12px",
                   textAlign: "left",
                   borderBottom: "1px solid var(--line)",
-                  width: 220,
+                  width: 160,
                 }}
               >
                 Target
@@ -246,7 +433,7 @@ export function FindingsTable({
                   padding: "8px 12px",
                   textAlign: "left",
                   borderBottom: "1px solid var(--line)",
-                  width: 110,
+                  width: 90,
                 }}
               >
                 Status
@@ -256,7 +443,7 @@ export function FindingsTable({
                   padding: "8px 16px",
                   textAlign: "right",
                   borderBottom: "1px solid var(--line)",
-                  width: 90,
+                  width: 70,
                 }}
               >
                 Age
@@ -279,78 +466,44 @@ export function FindingsTable({
                 </td>
               </tr>
             )}
-            {filtered.map((r) => {
-              const sel = r.id === selectedId;
-              return (
-                <tr
-                  key={r.id}
-                  onClick={() => onSelect(r)}
-                  style={{
-                    cursor: "pointer",
-                    background: sel ? "var(--nt-blue-50)" : "transparent",
-                    borderBottom: "1px solid var(--line)",
-                  }}
-                >
-                  <td style={{ padding: "10px 16px" }}>
-                    <SevBadge severity={r.severity} />
-                  </td>
-                  <td style={{ padding: "10px 12px" }}>
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        color: "var(--ink)",
-                        display: "inline-block",
-                        maxWidth: 360,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        verticalAlign: "middle",
-                      }}
-                    >
-                      {r.title}
-                    </span>
-                  </td>
-                  <td style={{ padding: "10px 12px" }}>
-                    <CvssBar score={r.cvss} severity={r.severity} />
-                  </td>
-                  <td style={{ padding: "10px 12px" }}>
-                    <span
-                      style={{
-                        fontSize: 11.5,
-                        fontWeight: 500,
-                        color: "var(--ink-2)",
-                      }}
-                    >
-                      {r.scanJob.toolName}
-                    </span>
-                  </td>
-                  <td style={{ padding: "10px 12px" }}>
-                    <span
-                      className="mono"
-                      style={{ fontSize: 11, color: "var(--ink-2)" }}
-                    >
-                      {r.target}
-                    </span>
-                  </td>
-                  <td style={{ padding: "10px 12px" }}>
-                    <StatusPill status={r.status} />
-                  </td>
-                  <td
-                    style={{
-                      padding: "10px 16px",
-                      textAlign: "right",
-                    }}
-                  >
-                    <span
-                      className="mono"
-                      style={{ fontSize: 11, color: "var(--ink-3)" }}
-                    >
-                      {relativeAge(r.createdAt)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
+            {!groupByTarget ? (
+              filtered.map(renderFindingRow)
+            ) : (
+              grouped.map(({ target, findings, maxSev }) => {
+                const isExpanded = expandedTargets.has(target);
+                return (
+                  <Fragment key={target}>
+                    <tr onClick={(e) => toggleTarget(e, target)} style={{ cursor: "pointer", background: "var(--surface-2)", borderBottom: "1px solid var(--line)" }}>
+                      <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 24,
+                            height: 24,
+                            borderRadius: 4,
+                            background: isExpanded ? "var(--line)" : "transparent",
+                            transition: "transform 0.2s",
+                            transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                          }}
+                        >
+                          <Icon name="chevronRight" size={14} color="var(--ink-3)" />
+                        </div>
+                      </td>
+                      <td colSpan={7} style={{ padding: "10px 16px" }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <span className="mono" style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{target}</span>
+                          <SevBadge severity={maxSev} />
+                          <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{findings.length} findings</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && findings.map(renderFindingRow)}
+                  </Fragment>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

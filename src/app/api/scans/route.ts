@@ -9,7 +9,8 @@ import {
   persistSecrets,
   secretsToPlaintextMap,
 } from "@/lib/scans/byok";
-import { triggerScanAsync } from "@/lib/scans/trigger";
+import { triggerScansAsync } from "@/lib/scans/trigger";
+import { expandTargets } from "@/lib/scans/target-parser";
 import { FileRefSchema } from "@/lib/scans/upload-schema";
 import { assertPathInUserDir } from "@/lib/uploads/storage";
 
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { toolName, projectId, target, assetType, parameters } = parsed.data;
+  const { toolName, projectId, target, assetType, parameters ,secrets: incomingSecrets} = parsed.data;
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, userId: session.user.id },
@@ -51,9 +52,10 @@ export async function POST(req: Request) {
   }
 
   const params: Record<string, unknown> = parameters ?? {};
+  const bodySecrets: Record<string, unknown> = (incomingSecrets as Record<string, unknown>) ?? {};
 
   // ─── BYOK secrets: encrypt + persist, keep plaintext map in-memory only ───
-  const secrets = extractSecrets(tool, params);
+  const secrets = extractSecrets(tool, bodySecrets); 
   await persistSecrets(projectId, secrets);
   const secretMap = secretsToPlaintextMap(secrets);
 
@@ -97,33 +99,46 @@ export async function POST(req: Request) {
   }
   for (const [fid, ref] of Object.entries(fileRefs)) sanitised[fid] = ref;
 
-  await prisma.asset.upsert({
-    where: { projectId_target: { projectId, target } },
-    update: {},
-    create: { projectId, target, type: assetType },
-  });
+  const parsedTargets = expandTargets(target);
+  if (parsedTargets.length > 256) {
+    return NextResponse.json({ error: "too many targets (max 256)" }, { status: 400 });
+  }
 
-  const scanJob = await prisma.scanJob.create({
-    data: {
-      projectId,
-      toolName,
-      status: "PENDING",
-      parameters:
-        Object.keys(sanitised).length > 0
-          ? (sanitised as Prisma.InputJsonValue)
-          : Prisma.DbNull,
-    },
-  });
+  const jobsToTrigger = [];
+
+  for (const t of parsedTargets) {
+    await prisma.asset.upsert({
+      where: { projectId_target: { projectId, target: t } },
+      update: {},
+      create: { projectId, target: t, type: assetType },
+    });
+
+    const scanJob = await prisma.scanJob.create({
+      data: {
+        projectId,
+        toolName,
+        status: "PENDING",
+        parameters:
+          Object.keys(sanitised).length > 0
+            ? (sanitised as Prisma.InputJsonValue)
+            : Prisma.DbNull,
+      },
+    });
+
+    jobsToTrigger.push({
+      scanJob: {
+        id: scanJob.id,
+        projectId: scanJob.projectId,
+        toolName: scanJob.toolName,
+      },
+      target: t,
+    });
+  }
 
   // Fire-and-forget. State transitions PENDING -> RUNNING (on 2xx) or
   // PENDING -> FAILED (on timeout / non-2xx) happen out of band.
-  void triggerScanAsync({
-    scanJob: {
-      id: scanJob.id,
-      projectId: scanJob.projectId,
-      toolName: scanJob.toolName,
-    },
-    target,
+  void triggerScansAsync({
+    jobs: jobsToTrigger,
     assetType,
     parameters: sanitised,
     secrets: secretMap,
@@ -131,5 +146,5 @@ export async function POST(req: Request) {
     callbackUrl: callbackUrl(req),
   });
 
-  return NextResponse.json({ scanJob }, { status: 201 });
+  return NextResponse.json({ jobs: jobsToTrigger.map(j => j.scanJob) }, { status: 201 });
 }
