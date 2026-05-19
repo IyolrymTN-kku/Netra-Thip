@@ -207,10 +207,10 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
         return;
       }
       const body = (await res.json().catch(() => null)) as
-        | { scanJob?: { id?: string } }
+        | { scanJob?: { id?: string }; jobs?: Array<{ id: string }> }
         | null;
-      const jobId = body?.scanJob?.id;
-      router.push(jobId ? `/scans/${jobId}` : "/dashboard");
+      const jobId = body?.scanJob?.id ?? body?.jobs?.[0]?.id;
+      router.push(jobId ? `/scans/${jobId}` : "/findings");
       router.refresh();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Network error");
