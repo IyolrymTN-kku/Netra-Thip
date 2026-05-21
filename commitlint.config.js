@@ -37,7 +37,8 @@ module.exports = {
         "github",
         "ai",
         "deps",
-        "commitlint"
+        "commitlint",
+        "lint"
       ]
     ],
     "subject-case": [0],
