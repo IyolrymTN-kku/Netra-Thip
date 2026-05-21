@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FindingStatus, Severity } from "@prisma/client";
+import { Severity } from "@prisma/client";
 
 export const FindingInput = z.object({
   title: z.string().min(1).max(500),

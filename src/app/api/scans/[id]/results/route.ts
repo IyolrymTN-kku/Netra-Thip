@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { JobStatus } from "@prisma/client";
+import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { ResultsIngestInput } from "@/lib/findings/schema";
 import { SIGNATURE_HEADER, verifySignature } from "@/lib/scans/signing";
@@ -69,7 +69,7 @@ export async function POST(
         remediation: f.remediation,
         target: f.target,
         cvss: f.cvss ?? null,
-        cves: f.cves ? (f.cves as any) : null,
+        cves: f.cves ? ((f.cves as unknown) as Prisma.InputJsonValue) : Prisma.JsonNull,
         status: f.status ?? "OPEN",
       })),
     });
