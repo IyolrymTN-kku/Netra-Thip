@@ -159,7 +159,7 @@ export function FindingsTable({
   const renderFindingRow = (r: FindingRow) => {
     const sel = r.id === selectedId;
     const isExpanded = expandedRows.has(r.id);
-    const cves = (r.cves as any[]) || [];
+    const cves = (r.cves as Array<{ cveId: string; severity: Severity; cvss: number | null; description: string }>) || [];
     const hasCves = cves.length > 0;
 
     return (
@@ -264,7 +264,7 @@ export function FindingsTable({
                 </div>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--surface-1)", borderRadius: 6, overflow: "hidden", border: "1px solid var(--line)" }}>
                   <tbody>
-                    {cves.map((cve: any, i: number) => (
+                    {cves.map((cve, i: number) => (
                       <tr key={i} style={{ borderBottom: i < cves.length - 1 ? "1px solid var(--line)" : "none" }}>
                         <td style={{ padding: "8px 12px", width: "160px" }}>
                           <span style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>{cve.cveId}</span>

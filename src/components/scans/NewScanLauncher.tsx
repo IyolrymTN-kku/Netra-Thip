@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons/Icon";
-import { TOOLS, type FieldConfig, type ToolDef } from "@/lib/tools/registry";
+import { TOOLS, type ToolDef } from "@/lib/tools/registry";
 import { DynamicForm, type FileMeta, type FormValues } from "./DynamicForm";
 import { ToolCard } from "./ToolCard";
 
@@ -39,12 +39,6 @@ function pickTargetField(tool: ToolDef): TargetDescriptor | null {
   const text = tool.fields.find((f) => f.id === "target");
   if (text) return { fieldId: text.id, assetType: "DOMAIN" };
   return null;
-}
-
-function isFileFieldId(tool: ToolDef, fieldId: string): boolean {
-  return tool.fields.some(
-    (f: FieldConfig) => f.id === fieldId && f.type === "file",
-  );
 }
 
 // Build the parameters object that hits POST /api/scans.

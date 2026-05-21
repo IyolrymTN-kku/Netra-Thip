@@ -1,7 +1,7 @@
 import "server-only";
 import { Prisma, AssetType } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { signScanJob, SIGNATURE_HEADER } from "./signing";
+import { signScanJob } from "./signing";
 
 const TRIGGER_TIMEOUT_MS = 10_000;
 
