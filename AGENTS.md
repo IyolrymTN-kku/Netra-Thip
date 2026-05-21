@@ -8,13 +8,15 @@
 ## 2. Tech Stack & Infrastructure
 - **Frontend/Backend:** Next.js 15 (App Router), TypeScript, Tailwind CSS v4.
 - **Orchestration:** n8n (Hidden from UI, triggered via Core Engine Webhooks).
-- **Databases:** - **PostgreSQL (Prisma 5):** Relational data (Users, Roles, Projects, Assets, Encrypted API Keys, ScanJobs).
+- **Databases:**
+  - **PostgreSQL (Prisma 5):** Relational data (Users, Roles, Projects, Assets, Encrypted API Keys, ScanJobs).
   - **MongoDB:** Document store for flexible Tool Raw Outputs and standard `NormalizedFinding` data.
 - **Execution Environment:** Docker (Ephemeral containers for tools).
 
 ## 3. Integrated Security Tools (The 7 Pillars)
 The system categorizes tools into 3 Execution Strategies:
-- **Category 1 (CLI Tools via Docker/n8n):** - `AutoPentestX` (End-to-End Pentest, Python CLI)
+- **Category 1 (CLI Tools via Docker/n8n):**
+  - `AutoPentestX` (End-to-End Pentest, Python CLI)
   - `Guardian-cli` (AI-Driven Pentest, Python CLI)
   - `VULS` (Vulnerability Scanner, Go CLI)
 - **Category 2 (REST API Services):**
