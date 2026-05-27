@@ -99,6 +99,7 @@ export function FindingsTable({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [groupByTarget, setGroupByTarget] = useState(false);
   const [expandedTargets, setExpandedTargets] = useState<Set<string>>(new Set());
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
   const toggleExpand = (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); // Prevent row selection when clicking expand
@@ -125,16 +126,19 @@ export function FindingsTable({
     [rows],
   );
 
-  const filtered = useMemo(
-    () =>
-      rows
-        .filter((r) => sevFilter === "ALL" || r.severity === sevFilter)
-        .filter(
-          (r) => toolFilter === "ALL" || r.scanJob.toolName === toolFilter,
-        )
-        .filter((r) => statusFilter === "ALL" || r.status === statusFilter),
-    [rows, sevFilter, toolFilter, statusFilter],
-  );
+  const filtered = useMemo(() => {
+    const result = rows
+      .filter((r) => sevFilter === "ALL" || r.severity === sevFilter)
+      .filter((r) => toolFilter === "ALL" || r.scanJob.toolName === toolFilter)
+      .filter((r) => statusFilter === "ALL" || r.status === statusFilter);
+
+    result.sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime();
+      const timeB = new Date(b.createdAt).getTime();
+      return sortOrder === "desc" ? timeB - timeA : timeA - timeB;
+    });
+    return result;
+  }, [rows, sevFilter, toolFilter, statusFilter, sortOrder]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, FindingRow[]>();
@@ -443,10 +447,24 @@ export function FindingsTable({
                   padding: "8px 16px",
                   textAlign: "right",
                   borderBottom: "1px solid var(--line)",
-                  width: 70,
+                  width: 90,
+                  cursor: "pointer",
+                  userSelect: "none",
                 }}
+                onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
               >
-                Age
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                  Age
+                  <Icon 
+                    name="chevronDown" 
+                    size={12} 
+                    style={{ 
+                      color: "var(--ink-3)",
+                      transform: sortOrder === "asc" ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 0.2s ease"
+                    }} 
+                  />
+                </div>
               </th>
             </tr>
           </thead>

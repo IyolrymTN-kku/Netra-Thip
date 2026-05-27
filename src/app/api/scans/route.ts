@@ -8,7 +8,9 @@ import {
   extractSecrets,
   persistSecrets,
   secretsToPlaintextMap,
+  inferProvider
 } from "@/lib/scans/byok";
+import { decrypt } from "@/lib/security/encryption";
 import { triggerScansAsync } from "@/lib/scans/trigger";
 import { expandTargets } from "@/lib/scans/target-parser";
 import { FileRefSchema } from "@/lib/scans/upload-schema";
@@ -54,10 +56,46 @@ export async function POST(req: Request) {
   const params: Record<string, unknown> = parameters ?? {};
   const bodySecrets: Record<string, unknown> = (incomingSecrets as Record<string, unknown>) ?? {};
 
-  // ─── BYOK secrets: encrypt + persist, keep plaintext map in-memory only ───
-  const secrets = extractSecrets(tool, bodySecrets); 
-  await persistSecrets(projectId, secrets);
-  const secretMap = secretsToPlaintextMap(secrets);
+  // ─── BYOK secrets: encrypt + persist incoming keys ───
+  // Force Turbopack reload
+  const extractedSecrets = extractSecrets(tool, bodySecrets); 
+  await persistSecrets(projectId, extractedSecrets);
+  const secretMap = secretsToPlaintextMap(extractedSecrets);
+
+  // ─── Auto-inject saved configurations (Keys & Metadata) ───
+  // We use $queryRaw because prisma generate failed and metadata is an unknown field in the generated client.
+  const savedConfigs = await prisma.$queryRaw<any[]>`SELECT * FROM "ApiKey" WHERE "projectId" = ${projectId}`;
+
+  const aiProvider = String(params.ai_provider || "openai");
+  const aiConfig = savedConfigs.find((c: any) => c.provider === aiProvider);
+
+  for (const f of tool.fields) {
+    if (f.type === "secret" && !secretMap[f.id]) {
+      let provider = "";
+      if (f.id === "ai_api_key") provider = aiProvider;
+      else if (f.id.endsWith("_api_key")) provider = f.id.replace("_api_key", "");
+      else provider = `${tool.id}_${f.id}`;
+      
+      const saved = savedConfigs.find((c: any) => c.provider === provider);
+      
+      if (saved) {
+        try {
+          secretMap[f.id] = decrypt({ ciphertext: saved.encryptedKey, iv: saved.iv, authTag: saved.authTag });
+        } catch (e) {
+          console.error(`Failed to decrypt saved key for ${provider}`);
+        }
+      } else if (aiConfig?.metadata) {
+        // Inject model/baseUrl from the main AI provider's metadata if applicable
+        const meta = aiConfig.metadata;
+        if ((f.id === "model" || f.id === "ai_model") && meta.model) {
+          secretMap[f.id] = meta.model;
+        }
+        if ((f.id === "base_url" || f.id === "ai_base_url") && meta.baseUrl) {
+          secretMap[f.id] = meta.baseUrl;
+        }
+      }
+    }
+  }
 
   // ─── File refs: validate shape + reject path traversal ───
   const fileRefs: Record<string, { path: string; originalName: string; size: number }> = {};

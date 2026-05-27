@@ -9,6 +9,7 @@ import { ToolCard } from "./ToolCard";
 
 interface NewScanLauncherProps {
   projectId: string;
+  savedConfigs?: any[];
 }
 
 type AssetType = "DOMAIN" | "IP" | "URL";
@@ -104,7 +105,7 @@ async function uploadFileFields(
   return refs;
 }
 
-export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
+export function NewScanLauncher({ projectId, savedConfigs = [] }: NewScanLauncherProps) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string>(TOOLS[0].id);
   const [valuesByTool, setValuesByTool] = useState<Record<string, FormValues>>(
@@ -127,9 +128,35 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
     }));
   };
 
+  const configuredFields = useMemo(() => {
+    const configured: Record<string, string> = {};
+    const aiProvider = String(values.ai_provider || "openai");
+    const aiConfig = savedConfigs.find((c: any) => c.provider === aiProvider);
+
+    for (const f of tool.fields) {
+      if (f.id === "ai_api_key" && aiConfig) {
+        configured[f.id] = "API Key";
+      } else if ((f.id === "model" || f.id === "ai_model") && aiConfig?.metadata?.model) {
+        configured[f.id] = aiConfig.metadata.model;
+      } else if ((f.id === "base_url" || f.id === "ai_base_url") && aiConfig?.metadata?.baseUrl) {
+        configured[f.id] = aiConfig.metadata.baseUrl;
+      } else if (f.type === "secret" && !["model", "base_url", "ai_model", "ai_base_url"].includes(f.id)) {
+        let provider = "";
+        if (f.id.endsWith("_api_key")) provider = f.id.replace("_api_key", "");
+        else provider = `${tool.id}_${f.id}`;
+        
+        const saved = savedConfigs.find((c: any) => c.provider === provider);
+        if (saved) {
+          configured[f.id] = "API Key";
+        }
+      }
+    }
+    return configured;
+  }, [tool, savedConfigs, values.ai_provider]);
+
   const target = pickTargetField(tool);
   const requiredOk = tool.fields
-    .filter((f) => f.required)
+    .filter((f) => f.required && !configuredFields[f.id])
     .every((f) => {
       const v = values[f.id] ?? ("default" in f ? f.default : undefined);
       return v !== undefined && v !== null && v !== "";
@@ -370,7 +397,7 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
           style={{ padding: "22px 24px", overflow: "auto", flex: 1 }}
           key={tool.id + "-form"}
         >
-          <DynamicForm tool={tool} values={values} onChange={setVal} />
+          <DynamicForm tool={tool} values={values} onChange={setVal} configuredFields={configuredFields} />
         </div>
 
         {/* Footer / actions */}

@@ -24,9 +24,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "OPERATE",
     items: [
       { id: "dashboard", href: "/dashboard", icon: "activity", label: "Dashboard" },
-      { id: "scans", href: "/scans/new", icon: "scan", label: "Scans", badge: 6 },
+      { id: "scans", href: "/scans", icon: "scan", label: "Scans", badge: 6 },
       { id: "findings", href: "/findings", icon: "bug", label: "Findings", badge: 47, badgeKind: "critical" },
-      { id: "targets", href: "/targets", icon: "target", label: "Targets" },
+      { id: "assets", href: "/assets", icon: "target", label: "Assets" },
     ],
   },
   {
@@ -41,6 +41,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "MANAGE",
     items: [
+      { id: "settings", href: "/settings", icon: "settings", label: "Settings" },
       { id: "engagements", href: "/engagements", icon: "database", label: "Engagements" },
       { id: "team", href: "/team", icon: "user", label: "Team" },
       { id: "audit", href: "/audit", icon: "lock", label: "Audit Log" },
