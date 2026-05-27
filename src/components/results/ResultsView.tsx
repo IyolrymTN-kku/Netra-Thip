@@ -13,7 +13,7 @@ interface ResultsViewProps {
   mode: "global" | "scan";
 }
 
-const SEVERITY_KEYS: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+const SEVERITY_KEYS: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
 
 const SEV_COLOR: Record<Severity, string> = {
   CRITICAL: "var(--sev-critical)",
@@ -26,11 +26,7 @@ const SEV_COLOR: Record<Severity, string> = {
 export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const findings = useMemo(() => {
-    return rawFindings.map((f) =>
-      f.severity === "INFO" ? { ...f, severity: "LOW" as Severity } : f
-    );
-  }, [rawFindings]);
+  const findings = rawFindings;
 
   const counts = useMemo(() => {
     const c: Record<Severity, number> = {
@@ -90,7 +86,7 @@ export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
         className="nt-stagger"
         style={{
           display: "grid",
-          gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr 1fr",
+          gridTemplateColumns: "1.2fr repeat(6, 1fr)",
           gap: 14,
         }}
       >
@@ -187,6 +183,12 @@ export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
           value={counts.LOW}
           color="var(--ok)"
           icon="check"
+        />
+        <ResultsKpi
+          label="Info"
+          value={counts.INFO}
+          color="var(--sev-info)"
+          icon="info"
         />
       </section>
 

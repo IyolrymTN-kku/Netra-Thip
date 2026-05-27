@@ -104,14 +104,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "too many targets (max 256)" }, { status: 400 });
   }
 
-  const jobsToTrigger = [];
-
   for (const t of parsedTargets) {
     await prisma.asset.upsert({
       where: { projectId_target: { projectId, target: t } },
       update: {},
       create: { projectId, target: t, type: assetType },
     });
+  }
+
+  // Vuls and Sirius both support multi-target execution in one run. Keep
+  // those results under one ScanJob so range scans render on one results page.
+  const executionTargets =
+    toolName === "vuls"
+      ? [parsedTargets.join(",")]
+      : toolName === "sirius"
+        ? [target.trim()]
+        : parsedTargets;
+
+  const jobsToTrigger = [];
+
+  for (const t of executionTargets) {
 
     const scanJob = await prisma.scanJob.create({
       data: {

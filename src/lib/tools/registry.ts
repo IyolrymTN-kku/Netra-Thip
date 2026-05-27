@@ -145,9 +145,9 @@ export const TOOLS: ToolDef[] = [
     category: "API",
     cat: 2,
     runtime: "~ 5 min",
-    desc: "Detects API drift, BOLA & PII leakage.",
+    desc: "Reads endpoints and alerts from traffic already captured by Metlo.",
     fields: [
-      { id: "target_api_url", label: "API URL", type: "url", placeholder: "http://localhost:6001", required: true, group: "Target" },
+      { id: "target_api_url", label: "Monitored API URL", type: "url", placeholder: "http://localhost:6001", required: true, group: "Target", hint: "This target must already send traffic through a Metlo agent, proxy, or ingestor. Opening an unconnected URL will not create Metlo endpoints." },
       
     ],
   },

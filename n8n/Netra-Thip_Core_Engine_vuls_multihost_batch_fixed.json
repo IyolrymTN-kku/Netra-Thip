@@ -1,0 +1,968 @@
+{
+  "name": "Netra-Thip: Core Engine - Vuls Sirius Metlo Fixed",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scan-trigger",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2080,
+        -5392
+      ],
+      "id": "c81c69cd-22f3-451b-a730-f344dd1ee3f3",
+      "name": "Webhook",
+      "webhookId": "708fb2bc-cb3e-491e-991e-3bf5d928f87f"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "aa99bb5b-d4f1-46b0-8cb9-f2a5c260f683",
+                    "leftValue": "={{ $json.toolName }}",
+                    "rightValue": "=sirius",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b89687f9-7271-4ebf-af68-7aade4fdcc1c",
+                    "leftValue": "={{ $json.toolName }}",
+                    "rightValue": "vuls",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8f9e98cf-7371-49ce-86c6-9835e49c7780",
+                    "leftValue": "={{ $json.toolName }}",
+                    "rightValue": "metlo",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1152,
+        -5408
+      ],
+      "id": "ebb3637b-4abb-420b-8b05-a2d3276d69d6",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/api/scans/{{  $('Loop1').item.json.scanJobId }}/results",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Netra-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  $json\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1104,
+        -4944
+      ],
+      "id": "759065f1-3453-4873-8e1d-6a1f67772280",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "value": "={{ $json.scanJobId }}",
+        "dataPropertyName": "signature"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -5136
+      ],
+      "id": "2b17f50b-0b89-45c9-bea1-c11b79dfb9a5",
+      "name": "Crypto",
+      "credentials": {
+        "crypto": {
+          "id": "ohcQ9N9jBq2pgBBJ",
+          "name": "Crypto account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all().map(i => i.json || {});\n\nfunction asArray(v) {\n  if (Array.isArray(v)) return v;\n  if (v == null) return [];\n  return [v];\n}\n\nfunction splitMulti(value) {\n  if (Array.isArray(value)) {\n    return value.flatMap(v => splitMulti(v)).filter(Boolean);\n  }\n\n  return String(value || \"\")\n    .split(/[\\n,; ]+/)\n    .map(v => v.trim())\n    .filter(Boolean);\n}\n\nfunction safeServerName(ip, index = 0) {\n  return `target_${String(ip || `unknown_${index + 1}`).replace(/[^A-Za-z0-9]/g, \"_\")}`;\n}\n\n/**\n * รองรับ 3 แบบ:\n * 1) item.body เป็น array จาก Normalize Webhook Body\n * 2) item.body เป็น object หลัง Item Lists split\n * 3) item เป็น object target โดยตรง\n */\nconst rawJobs = [];\n\nfor (const item of inputItems) {\n  if (Array.isArray(item.body)) {\n    rawJobs.push(...item.body);\n  } else if (item.body && typeof item.body === \"object\") {\n    rawJobs.push(item.body);\n  } else {\n    rawJobs.push(item);\n  }\n}\n\nif (!rawJobs.length) {\n  throw new Error(\"No Vuls jobs found from input/body.\");\n}\n\nconst targets = [];\n\nrawJobs.forEach((job, jobIndex) => {\n  const params = job.parameters || {};\n\n  const ips = splitMulti(\n    params.target_ips ||\n    params.target_ip ||\n    job.target_ips ||\n    job.target_ip ||\n    job.target\n  );\n\n  const users = splitMulti(\n    params.ssh_users ||\n    params.ssh_user ||\n    job.ssh_users ||\n    job.ssh_user ||\n    job.sshUser ||\n    job.username\n  );\n\n  const ports = splitMulti(\n    params.ssh_ports ||\n    params.ssh_port ||\n    job.ssh_ports ||\n    job.ssh_port ||\n    job.sshPort ||\n    22\n  );\n\n  if (!ips.length) {\n    throw new Error(`No target IP found at job index ${jobIndex}`);\n  }\n\n  if (!users.length) {\n    throw new Error(`No SSH user found at job index ${jobIndex}`);\n  }\n\n  ips.forEach((ip, ipIndex) => {\n    const sshUser = users.length === 1 ? users[0] : users[ipIndex];\n    const sshPort = Number(ports.length === 1 ? ports[0] : ports[ipIndex] || 22);\n\n    if (!sshUser) {\n      throw new Error(`No SSH user for target ${ip}`);\n    }\n\n    const serverLabel = safeServerName(ip, targets.length);\n\n    targets.push({\n      ip,\n      target: ip,\n      serverLabel,\n      serverName: serverLabel,\n\n      sshUser,\n      username: sshUser,\n      sshPort,\n\n      // ใช้ key กลางบนเครื่อง n8n/Vuls server\n      // Execute command จะ map เป็น /tmp/vuls_id_rsa ใน container เอง\n      sshKeyPath: null,\n\n      // ถ้าเป็นเครื่องเก่า เช่น metasploitable2 ค่อยเปลี่ยนเป็น true\n      legacySsh: Boolean(job.legacySsh || params.legacySsh || false),\n\n      scanJobId: job.scanJobId || null,\n      projectId: job.projectId || null,\n      callbackUrl: job.callbackUrl || null,\n      signature: job.signature || null,\n\n      toolName: \"vuls\"\n    });\n  });\n});\n\nreturn [\n  {\n    json: {\n      toolName: \"vuls\",\n      target: targets.length === 1 ? targets[0].ip : \"multiple\",\n      target_ip: targets.map(t => t.ip).join(\",\"),\n      sshUser: targets.map(t => t.sshUser).join(\",\"),\n      sshPort: targets.length === 1 ? targets[0].sshPort : null,\n\n      // สำคัญ: ส่งหลายเครื่องเข้า Execute command เป็น array เดียว\n      targets,\n\n      // เก็บ scanJobId หลายตัวไว้ เผื่อ Code node/HTTP callback ต้องใช้ต่อ\n      scanJobs: targets.map(t => ({\n        scanJobId: t.scanJobId,\n        projectId: t.projectId,\n        target: t.ip,\n        serverName: t.serverName,\n        callbackUrl: t.callbackUrl,\n        signature: t.signature\n      }))\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        -4560
+      ],
+      "id": "72a931d5-cc9d-44b9-9301-4123bbcfb913",
+      "name": "Prepare Vuls Payload"
+    },
+    {
+      "parameters": {
+        "command": "=set +e\n\ncd \"/mnt/e/va tools/vulsNewNewNew/vuls\" || {\n  echo \"###VULS_JSON_START###\"\n  echo '{\"toolName\":\"vuls\",\"status\":\"failed\",\"findings\":[],\"summary\":{\"total\":0,\"critical\":0,\"high\":0,\"medium\":0,\"low\":0,\"info\":1},\"error\":\"Cannot cd to Vuls working directory\"}'\n  echo \"###VULS_JSON_END###\"\n  exit 0\n}\n\nmkdir -p results tmp \"$HOME/.ssh\"\n\nKEY_HOST=\"${VULS_SSH_KEY:-$HOME/.ssh/vuls_n8n/id_rsa}\"\nif [ ! -f \"$KEY_HOST\" ]; then\n  KEY_HOST=\"$HOME/.ssh/id_rsa\"\nfi\n\nif [ ! -f \"$KEY_HOST\" ]; then\n  echo \"###VULS_JSON_START###\"\n  echo '{\"toolName\":\"vuls\",\"status\":\"failed\",\"findings\":[],\"summary\":{\"total\":0,\"critical\":0,\"high\":0,\"medium\":0,\"low\":0,\"info\":1},\"error\":\"SSH private key not found. Expected ~/.ssh/vuls_n8n/id_rsa or ~/.ssh/id_rsa\"}'\n  echo \"###VULS_JSON_END###\"\n  exit 0\nfi\n\nchmod 700 \"$HOME/.ssh\" 2>/dev/null || true\nchmod 600 \"$KEY_HOST\" 2>/dev/null || true\n\nrm -f tmp/vuls_targets.json tmp/vuls_known_hosts tmp/vuls_configtest.log tmp/vuls_scan.log tmp/vuls_report.log tmp/vuls_payload.json\nfind results -type f -name \"*.json\" -delete 2>/dev/null || true\n\ncat > tmp/vuls_targets.json <<'JSON'\n{{ JSON.stringify($json.targets || []) }}\nJSON\n\nDOCKER_BIN=\"$(command -v docker 2>/dev/null || true)\"\nVULS_BIN=\"$(command -v vuls 2>/dev/null || true)\"\n\nif [ -n \"$DOCKER_BIN\" ]; then\n  RUN_MODE=\"docker\"\n  CONFIG_PATH=\"/vuls/config.toml\"\n  RESULTS_DIR=\"/vuls/results\"\n  KEY_IN_CONFIG=\"/tmp/vuls_id_rsa\"\n  KNOWN_HOSTS_IN_CONFIG=\"/root/.ssh/known_hosts\"\nelif [ -n \"$VULS_BIN\" ]; then\n  RUN_MODE=\"native\"\n  CONFIG_PATH=\"$PWD/config.toml\"\n  RESULTS_DIR=\"$PWD/results\"\n  KEY_IN_CONFIG=\"$KEY_HOST\"\n  KNOWN_HOSTS_IN_CONFIG=\"$PWD/tmp/vuls_known_hosts\"\nelse\n  echo \"###VULS_JSON_START###\"\n  echo '{\"toolName\":\"vuls\",\"status\":\"failed\",\"findings\":[],\"summary\":{\"total\":0,\"critical\":0,\"high\":0,\"medium\":0,\"low\":0,\"info\":1},\"error\":\"Neither docker nor vuls binary found on n8n host\"}'\n  echo \"###VULS_JSON_END###\"\n  exit 0\nfi\n\nexport RUN_MODE CONFIG_PATH RESULTS_DIR KEY_IN_CONFIG KNOWN_HOSTS_IN_CONFIG KEY_HOST DOCKER_BIN VULS_BIN\n\npython3 - <<'PY'\nimport json, os, re, subprocess\nfrom pathlib import Path\n\ntargets = json.loads(Path(\"tmp/vuls_targets.json\").read_text() or \"[]\")\n\nif not isinstance(targets, list) or not targets:\n    raise SystemExit(\"No targets from Prepare Vuls Payload\")\n\ndef safe_name(value):\n    value = re.sub(r\"[^A-Za-z0-9_]\", \"_\", str(value or \"target\"))\n    value = re.sub(r\"_+\", \"_\", value).strip(\"_\")\n    return value or \"target\"\n\nnormalized = []\nseen = set()\n\nfor i, t in enumerate(targets):\n    ip = str(t.get(\"ip\") or t.get(\"target\") or t.get(\"target_ip\") or \"\").strip()\n    user = str(t.get(\"sshUser\") or t.get(\"username\") or t.get(\"ssh_user\") or \"\").strip()\n    port = int(t.get(\"sshPort\") or t.get(\"ssh_port\") or 22)\n\n    if not ip:\n        raise SystemExit(f\"Missing ip at target index {i}\")\n    if not user:\n        raise SystemExit(f\"Missing ssh user for {ip}\")\n\n    name = safe_name(t.get(\"serverLabel\") or t.get(\"serverName\") or f\"target_{ip}\")\n    base = name\n    n = 2\n    while name in seen:\n        name = f\"{base}_{n}\"\n        n += 1\n    seen.add(name)\n\n    normalized.append({\n        **t,\n        \"ip\": ip,\n        \"target\": ip,\n        \"sshUser\": user,\n        \"username\": user,\n        \"sshPort\": port,\n        \"serverLabel\": name,\n        \"serverName\": name,\n        \"legacySsh\": bool(t.get(\"legacySsh\", False))\n    })\n\nPath(\"tmp/vuls_targets.json\").write_text(json.dumps(normalized, ensure_ascii=False, indent=2))\n\nknown = Path(\"tmp/vuls_known_hosts\")\nknown.write_text(\"\")\n\nfor t in normalized:\n    ip = t[\"ip\"]\n    port = str(t[\"sshPort\"])\n    print(f\"ssh-keyscan {ip}:{port}\")\n    with known.open(\"a\") as f:\n        subprocess.run([\"ssh-keyscan\", \"-p\", port, ip], stdout=f, stderr=subprocess.DEVNULL)\n\nconfig = \"[servers]\\n\\n\"\n\nfor t in normalized:\n    opts = [\n        '\"-F\"', '\"/dev/null\"',\n        '\"-o\"', '\"StrictHostKeyChecking=yes\"',\n        '\"-o\"', f'\"UserKnownHostsFile={os.environ[\"KNOWN_HOSTS_IN_CONFIG\"]}\"'\n    ]\n\n    if t.get(\"legacySsh\"):\n        opts.extend([\n            '\"-o\"', '\"HostKeyAlgorithms=+ssh-rsa\"',\n            '\"-o\"', '\"PubkeyAcceptedAlgorithms=+ssh-rsa\"'\n        ])\n\n    config += f'''[servers.{t[\"serverLabel\"]}]\nhost = \"{t[\"ip\"]}\"\nport = \"{t[\"sshPort\"]}\"\nuser = \"{t[\"sshUser\"]}\"\nkeyPath = \"{os.environ[\"KEY_IN_CONFIG\"]}\"\nsshConfigPath = \"/dev/null\"\nscanMode = [\"fast\"]\nsshOption = [\n  {\", \".join(opts)}\n]\n\n'''\n\nPath(\"config.toml\").write_text(config)\n\nprint(\"========== GENERATED VULS TARGETS ==========\")\nprint(json.dumps(normalized, ensure_ascii=False, indent=2))\nprint(\"========== GENERATED config.toml ==========\")\nprint(config)\nPY\n\nCONFIG_STATUS=$?\n\nif [ \"$CONFIG_STATUS\" -ne 0 ]; then\n  echo \"###VULS_JSON_START###\"\n  python3 - <<'PY'\nimport json\nprint(json.dumps({\n  \"toolName\": \"vuls\",\n  \"status\": \"failed\",\n  \"findings\": [],\n  \"summary\": {\"total\": 0, \"critical\": 0, \"high\": 0, \"medium\": 0, \"low\": 0, \"info\": 1},\n  \"error\": \"Failed to generate Vuls config.toml\"\n}, ensure_ascii=False))\nPY\n  echo \"###VULS_JSON_END###\"\n  exit 0\nfi\n\nrun_vuls() {\n  if [ \"$RUN_MODE\" = \"docker\" ]; then\n    \"$DOCKER_BIN\" run --rm -i \\\n      -v \"$PWD:/vuls\" \\\n      -v \"$KEY_HOST:/tmp/vuls_id_rsa:ro\" \\\n      -v \"$PWD/tmp/vuls_known_hosts:/root/.ssh/known_hosts:ro\" \\\n      vuls/vuls \"$@\"\n  else\n    \"$VULS_BIN\" \"$@\"\n  fi\n}\n\necho \"========== VULS RUN INFO ==========\"\necho \"mode=$RUN_MODE\"\necho \"pwd=$PWD\"\necho \"key_host=$KEY_HOST\"\necho \"config_path=$CONFIG_PATH\"\necho \"results_dir=$RESULTS_DIR\"\ngrep -n \"^\\[servers\\.\" config.toml || true\necho \"===================================\"\n\nCONFIGTEST_CODE=0\nSCAN_CODE=0\nREPORT_CODE=0\nSUMMARY_CODE=0\n\nrun_vuls configtest -config=\"$CONFIG_PATH\" > tmp/vuls_configtest.log 2>&1 || CONFIGTEST_CODE=$?\nrun_vuls scan -config=\"$CONFIG_PATH\" -results-dir=\"$RESULTS_DIR\" > tmp/vuls_scan.log 2>&1 || SCAN_CODE=$?\nrun_vuls report -config=\"$CONFIG_PATH\" -results-dir=\"$RESULTS_DIR\" -format-json -to-localfile > tmp/vuls_report.log 2>&1 || REPORT_CODE=$?\n\necho \"========== CONFIGTEST LOG ==========\"\ntail -n 120 tmp/vuls_configtest.log || true\necho \"========== SCAN LOG ==========\"\ntail -n 160 tmp/vuls_scan.log || true\necho \"========== REPORT LOG ==========\"\ntail -n 120 tmp/vuls_report.log || true\necho \"========== REPORT SUMMARY LOG ==========\"\ntail -n 120 tmp/vuls_report_summary.log || true\necho \"========================================\"\n\necho \"###VULS_JSON_START###\"\n\npython3 - \"$CONFIGTEST_CODE\" \"$SCAN_CODE\" \"$REPORT_CODE\" \"$SUMMARY_CODE\" <<'PY'\nimport json, re, sys\nfrom pathlib import Path\n\nconfigtest_code = int(sys.argv[1])\nscan_code = int(sys.argv[2])\nreport_code = int(sys.argv[3])\nsummary_code = int(sys.argv[4])\n\ndef read(path):\n    try:\n        return Path(path).read_text(encoding=\"utf-8\", errors=\"ignore\")\n    except Exception:\n        return \"\"\n\ntargets = json.loads(Path(\"tmp/vuls_targets.json\").read_text() or \"[]\")\nconfigtest_log = read(\"tmp/vuls_configtest.log\")\nscan_log = read(\"tmp/vuls_scan.log\")\nreport_log = read(\"tmp/vuls_report.log\")\nreport_summary_log = read(\"tmp/vuls_report_summary.log\")\n\ndef to_float(v):\n    try:\n        if v is None:\n            return None\n        if isinstance(v, (int, float)):\n            n = float(v)\n            return n if 0 <= n <= 10 else None\n        s = str(v)\n        m = re.search(r\"\\b(\\d+(?:\\.\\d+)?)\\b\", s)\n        if not m:\n            return None\n        n = float(m.group(1))\n        return n if 0 <= n <= 10 else None\n    except Exception:\n        return None\n\ndef sev_from_score(score):\n    n = to_float(score)\n    if n is None:\n        return \"LOW\"\n    if n >= 9:\n        return \"CRITICAL\"\n    if n >= 7:\n        return \"HIGH\"\n    if n >= 4:\n        return \"MEDIUM\"\n    return \"LOW\"\n\ndef norm_sev(v):\n    s = str(v or \"\").upper()\n    if s in [\"CRITICAL\"]:\n        return \"CRITICAL\"\n    if s in [\"HIGH\", \"IMPORTANT\"]:\n        return \"HIGH\"\n    if s in [\"MEDIUM\", \"MODERATE\"]:\n        return \"MEDIUM\"\n    if s in [\"LOW\", \"NEGLIGIBLE\", \"UNKNOWN\", \"NONE\", \"INFO\", \"?\"]:\n        return \"LOW\"\n    return None\n\ndef walk(o):\n    if isinstance(o, dict):\n        yield o\n        for v in o.values():\n            yield from walk(v)\n    elif isinstance(o, list):\n        for v in o:\n            yield from walk(v)\n\ndef pick_score_sev(cve):\n    scores = []\n    sevs = []\n\n    for d in walk(cve):\n        for k, v in d.items():\n            kl = str(k).lower()\n            if kl.endswith(\"score\") or kl in [\"basescore\", \"base_score\", \"cvss3score\", \"cvss2score\"]:\n                n = to_float(v)\n                if n is not None:\n                    scores.append(n)\n            if kl.endswith(\"severity\") or kl in [\"severity\", \"priority\"]:\n                s = norm_sev(v)\n                if s:\n                    sevs.append(s)\n\n    if scores:\n        best = max(scores)\n        return best, sev_from_score(best)\n\n    if sevs:\n        sev = sevs[0]\n        return {\"CRITICAL\": 9.0, \"HIGH\": 7.0, \"MEDIUM\": 4.0, \"LOW\": 0.1}.get(sev, 0.1), sev\n\n    return 0.1, \"LOW\"\n\ndef summary_text(cve):\n    for k in [\"summary\", \"description\", \"title\", \"message\"]:\n        if isinstance(cve, dict) and cve.get(k):\n            return str(cve[k])[:1500]\n\n    contents = cve.get(\"cveContents\") if isinstance(cve, dict) else None\n    if isinstance(contents, dict):\n        for content in contents.values():\n            if isinstance(content, dict):\n                for k in [\"summary\", \"description\", \"title\"]:\n                    if content.get(k):\n                        return str(content[k])[:1500]\n\n    return \"Vuls detected a vulnerability on the target host.\"\n\ndef remediation_text(cve):\n    affected = cve.get(\"affectedPackages\") if isinstance(cve, dict) else None\n    if isinstance(affected, dict) and affected:\n        return \"Update affected packages: \" + \", \".join(list(affected.keys())[:10])\n    return \"Review affected packages and apply vendor security updates.\"\n\ndef iter_servers(data):\n    if isinstance(data, dict):\n        if any(k in data for k in [\"scannedCves\", \"cves\", \"vulnerabilities\"]):\n            yield data.get(\"serverName\") or data.get(\"host\") or \"target\", data\n            return\n\n        for name, value in data.items():\n            if isinstance(value, dict) and any(k in value for k in [\"scannedCves\", \"cves\", \"vulnerabilities\"]):\n                value = dict(value)\n                value.setdefault(\"serverName\", name)\n                yield name, value\n\n    elif isinstance(data, list):\n        for i, value in enumerate(data):\n            if isinstance(value, dict) and any(k in value for k in [\"scannedCves\", \"cves\", \"vulnerabilities\"]):\n                yield value.get(\"serverName\") or value.get(\"host\") or f\"server_{i}\", value\n\ntarget_map = {t[\"serverLabel\"]: t for t in targets if t.get(\"serverLabel\")}\n\nreport_files = sorted(str(p) for p in Path(\"results\").rglob(\"*.json\"))\n\nfindings = []\nhosts = {}\n\nfor t in targets:\n    name = t[\"serverLabel\"]\n    hosts[name] = {\n        \"serverName\": name,\n        \"serverLabel\": name,\n        \"ip\": t[\"ip\"],\n        \"target\": t[\"ip\"],\n        \"sshUser\": t[\"sshUser\"],\n        \"sshPort\": t[\"sshPort\"],\n        \"total\": 0,\n        \"critical\": 0,\n        \"high\": 0,\n        \"medium\": 0,\n        \"low\": 0,\n        \"info\": 0,\n        \"status\": \"missing\"\n    }\n\nseen = set()\n\nfor file in report_files:\n    try:\n        data = json.loads(Path(file).read_text(encoding=\"utf-8\", errors=\"ignore\"))\n    except Exception:\n        continue\n\n    for server_name, server in iter_servers(data):\n        mapped = target_map.get(server_name, {})\n        target_ip = mapped.get(\"ip\") or server.get(\"ip\") or server.get(\"host\") or server_name\n\n        hosts.setdefault(server_name, {\n            \"serverName\": server_name,\n            \"serverLabel\": server_name,\n            \"ip\": target_ip,\n            \"target\": target_ip,\n            \"sshUser\": mapped.get(\"sshUser\"),\n            \"sshPort\": mapped.get(\"sshPort\"),\n            \"total\": 0,\n            \"critical\": 0,\n            \"high\": 0,\n            \"medium\": 0,\n            \"low\": 0,\n            \"info\": 0,\n            \"status\": \"completed\"\n        })\n\n        hosts[server_name][\"status\"] = \"completed\"\n\n        scanned = server.get(\"scannedCves\") or server.get(\"cves\") or server.get(\"vulnerabilities\") or {}\n\n        if isinstance(scanned, dict):\n            items = scanned.items()\n        elif isinstance(scanned, list):\n            items = [(c.get(\"cveID\") or c.get(\"cveId\") or c.get(\"id\") or \"Unknown CVE\", c) for c in scanned if isinstance(c, dict)]\n        else:\n            items = []\n\n        for cve_id, cve in items:\n            key = f\"{server_name}|{target_ip}|{cve_id}\"\n            if key in seen:\n                continue\n            seen.add(key)\n\n            score, severity = pick_score_sev(cve if isinstance(cve, dict) else {})\n            sev_key = severity.lower()\n            if sev_key not in [\"critical\", \"high\", \"medium\", \"low\"]:\n                sev_key = \"low\"\n\n            hosts[server_name][sev_key] += 1\n            hosts[server_name][\"total\"] += 1\n\n            findings.append({\n                \"title\": str(cve_id)[:200],\n                \"severity\": severity,\n                \"description\": summary_text(cve if isinstance(cve, dict) else {}),\n                \"remediation\": remediation_text(cve if isinstance(cve, dict) else {}),\n                \"target\": str(target_ip),\n                \"serverName\": server_name,\n                \"serverLabel\": server_name,\n                \"status\": \"OPEN\",\n                \"cvss\": float(score),\n                \"tool\": \"vuls\"\n            })\n\nsummary = {\n    \"total\": len(findings),\n    \"critical\": sum(1 for f in findings if f[\"severity\"] == \"CRITICAL\"),\n    \"high\": sum(1 for f in findings if f[\"severity\"] == \"HIGH\"),\n    \"medium\": sum(1 for f in findings if f[\"severity\"] == \"MEDIUM\"),\n    \"low\": sum(1 for f in findings if f[\"severity\"] == \"LOW\"),\n    \"info\": 0\n}\n\nlogs = \"\\n\".join([configtest_log, scan_log, report_log])\n\nif configtest_code != 0 or scan_code != 0 or report_code != 0:\n    status = \"failed\"\nelif not report_files:\n    status = \"failed\"\nelif any(h[\"status\"] == \"missing\" for h in hosts.values()):\n    status = \"partial\"\nelse:\n    status = \"completed\"\n\npayload = {\n    \"toolName\": \"vuls\",\n    \"target\": \"multiple\" if len(targets) > 1 else targets[0][\"ip\"],\n    \"status\": status,\n    \"targets\": targets,\n    \"hosts\": list(hosts.values()),\n    \"findings\": findings,\n    \"summary\": summary,\n    \"severity_mix\": [\n        {\"severity\": \"CRITICAL\", \"count\": summary[\"critical\"]},\n        {\"severity\": \"HIGH\", \"count\": summary[\"high\"]},\n        {\"severity\": \"MEDIUM\", \"count\": summary[\"medium\"]},\n        {\"severity\": \"LOW\", \"count\": summary[\"low\"]},\n        {\"severity\": \"INFO\", \"count\": summary[\"info\"]}\n    ],\n    \"meta\": {\n        \"tool\": \"vuls\",\n        \"scanJobId\": targets[0].get(\"scanJobId\") if targets else None,\n        \"projectId\": targets[0].get(\"projectId\") if targets else None,\n        \"reportFiles\": report_files,\n        \"configtestCode\": configtest_code,\n        \"scanCode\": scan_code,\n        \"reportCode\": report_code,\n        \"configtestLog\": configtest_log[-8000:],\n        \"scanLog\": scan_log[-12000:],\n        \"reportLog\": report_log[-8000:],\n        \"reportSummaryLog\": report_summary_log[-8000:],\n        \"summaryCode\": summary_code\n    }\n}\n\nif status == \"failed\":\n    payload[\"error\"] = \"Vuls scan failed. Check meta.configtestLog / meta.scanLog / meta.reportLog\"\n\nprint(json.dumps(payload, ensure_ascii=False))\nPY\n\necho \"###VULS_JSON_END###\"\n\nexit 0"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        -4560
+      ],
+      "id": "dd9bf4d6-aded-44ad-bcb5-9a2ee655fc75",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPassword": {
+          "id": "iqiWj6jGF75UUX94",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json || {};\n\nconst stdout = String(item.stdout || \"\");\nconst stderr = String(item.stderr || \"\");\n\nfunction extractJsonBetweenMarkers(text) {\n  const m = text.match(/###VULS_JSON_START###\\s*([\\s\\S]*?)\\s*###VULS_JSON_END###/);\n  if (!m) return null;\n\n  const raw = m[1].trim();\n\n  try {\n    return JSON.parse(raw);\n  } catch (e) {\n    throw new Error(\"Cannot parse Vuls JSON payload: \" + e.message + \"\\nRAW:\\n\" + raw.slice(0, 2000));\n  }\n}\n\nconst payload = extractJsonBetweenMarkers(stdout);\n\nif (!payload) {\n  return [\n    {\n      json: {\n        toolName: \"vuls\",\n        status: \"failed\",\n        target: \"N/A\",\n        findings: [],\n        hosts: [],\n        summary: {\n          total: 0,\n          critical: 0,\n          high: 0,\n          medium: 0,\n          low: 0,\n          info: 1\n        },\n        severity_mix: [\n          { severity: \"CRITICAL\", count: 0 },\n          { severity: \"HIGH\", count: 0 },\n          { severity: \"MEDIUM\", count: 0 },\n          { severity: \"LOW\", count: 0 },\n          { severity: \"INFO\", count: 1 }\n        ],\n        error: \"No Vuls JSON marker found in Execute a command output\",\n        meta: {\n          stdout: stdout.slice(-12000),\n          stderr: stderr.slice(-8000)\n        }\n      }\n    }\n  ];\n}\n\nconst findings = Array.isArray(payload.findings) ? payload.findings : [];\n\nconst summary = payload.summary || {\n  total: findings.length,\n  critical: findings.filter(f => f.severity === \"CRITICAL\").length,\n  high: findings.filter(f => f.severity === \"HIGH\").length,\n  medium: findings.filter(f => f.severity === \"MEDIUM\").length,\n  low: findings.filter(f => f.severity === \"LOW\").length,\n  info: findings.filter(f => f.severity === \"INFO\").length\n};\n\nreturn [\n  {\n    json: {\n      ...payload,\n      findings,\n      summary,\n      severity_mix: [\n        { severity: \"CRITICAL\", count: Number(summary.critical || 0) },\n        { severity: \"HIGH\", count: Number(summary.high || 0) },\n        { severity: \"MEDIUM\", count: Number(summary.medium || 0) },\n        { severity: \"LOW\", count: Number(summary.low || 0) },\n        { severity: \"INFO\", count: Number(summary.info || 0) }\n      ]\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        -4560
+      ],
+      "id": "34dc284b-bd0f-4ef7-a62e-2acd2d47dd04",
+      "name": "Code in JavaScript",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "content": "## VULS\n",
+        "height": 240,
+        "width": 688
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        -4608
+      ],
+      "id": "f2ff9598-3bcf-47a9-9145-9ced5082e1b7",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## METLO\n",
+        "height": 240,
+        "width": 1204
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        -4256
+      ],
+      "id": "2933dd5f-3450-4784-af46-4d01f6eaf5d7",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst bodyRaw = input.body ?? input;\nconst body = Array.isArray(bodyRaw) ? (bodyRaw[0] || {}) : bodyRaw;\nconst params = body.parameters || input.parameters || {};\n\nconst targetName =\n  params.target_name ||\n  params.service_name ||\n  params.name ||\n  body.targetName ||\n  input.targetName ||\n  \"metlo-target\";\n\nlet displayTarget = String(\n  params.base_url ||\n  params.target_api_url ||\n  params.target_url ||\n  params.url ||\n  body.base_url ||\n  body.target_url ||\n  body.target ||\n  input.base_url ||\n  input.target_url ||\n  input.target ||\n  \"\"\n).trim();\n\nif (!displayTarget) {\n  throw new Error(\"Missing target URL for Metlo. Expected target or parameters.target_api_url.\");\n}\n\nif (!/^https?:\\/\\//i.test(displayTarget)) {\n  displayTarget = \"http://\" + displayTarget;\n}\ndisplayTarget = displayTarget.replace(/\\/+$/, \"\");\n\n// n8n reaches a host-local monitored service through Docker's host alias,\n// while the portal keeps showing the URL that the user entered.\nconst monitoredTarget = displayTarget.replace(\n  /^(https?:\\/\\/)(127\\.0\\.0\\.1|localhost)(?=:|\\/|$)/i,\n  \"$1host.docker.internal\"\n);\n\nconst metloBackendUrl = String(\n  params.metlo_backend_url ||\n  body.metloBackendUrl ||\n  body.metlo_backend_url ||\n  input.metloBackendUrl ||\n  input.metlo_backend_url ||\n  \"http://host.docker.internal:8080\"\n).replace(/\\/+$/, \"\");\n\nreturn [{\n  json: {\n    ...body,\n    scanJobId: body.scanJobId || input.scanJobId,\n    projectId: body.projectId || input.projectId,\n    toolName: \"metlo\",\n    target: monitoredTarget,\n    displayTarget,\n    targetName,\n    metloBackendUrl,\n    callbackUrl: body.callbackUrl || input.callbackUrl,\n    signature: body.signature || input.signature\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        -4192
+      ],
+      "id": "192e5c03-8636-4087-9936-3accff1c307f",
+      "name": "Prepare Metlo Payload1"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.metloBackendUrl }}/api/v1/endpoints?limit=1000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "metlo.wNy2Mvi6fT15aJpq+oG17g2CkBATtrW9F59TDLqN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -128,
+        -4192
+      ],
+      "id": "8a9da441-97bb-423b-818c-9c23255adfac",
+      "name": "Get Metlo Endpoints"
+    },
+    {
+      "parameters": {
+        "url": "={{ $(\"Prepare Metlo Payload1\").first().json.metloBackendUrl }}/api/v1/alerts?limit=1000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "metlo.wNy2Mvi6fT15aJpq+oG17g2CkBATtrW9F59TDLqN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        112,
+        -4192
+      ],
+      "id": "f6a05055-bf77-4539-b2b7-2d5fa75bf529",
+      "name": "Get Metlo Alerts"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $(\"Prepare Metlo Payload1\").first().json || {};\nconst endpointItems = $(\"Get Metlo Endpoints\").all().map((item) => item.json || {});\nconst alertItems = $(\"Get Metlo Alerts\").all().map((item) => item.json || {});\n\nconst displayTarget = payload.displayTarget || payload.target || \"metlo-target\";\nconst monitoredTarget = payload.target || displayTarget;\nconst scanJobId = payload.scanJobId || null;\n\nfunction text(value, fallback = \"\", maxLength = 1500) {\n  return String(value ?? fallback).slice(0, maxLength);\n}\n\nfunction hostOf(value) {\n  try {\n    return new URL(String(value)).host.toLowerCase();\n  } catch (error) {\n    return String(value || \"\")\n      .replace(/^https?:\\/\\//i, \"\")\n      .replace(/\\/.*$/, \"\")\n      .toLowerCase();\n  }\n}\n\nfunction endpointHost(record) {\n  return String(record?.host || record?.apiEndpoint?.host || \"\").toLowerCase();\n}\n\nfunction collect(value, predicate) {\n  if (Array.isArray(value)) return value.flatMap((item) => collect(item, predicate));\n  if (!value || typeof value !== \"object\") return [];\n  if (predicate(value)) return [value];\n  return [\"data\", \"items\", \"results\", \"endpoints\", \"alerts\", \"topAlerts\"]\n    .flatMap((key) => collect(value[key], predicate));\n}\n\nfunction isEndpoint(record) {\n  return !!(record && record.path && record.method && record.host);\n}\n\nfunction isAlert(record) {\n  return !!(record && record.type && (record.apiEndpoint || record.riskScore || record.description));\n}\n\nfunction severityOf(riskScore) {\n  const risk = String(riskScore || \"\").toLowerCase();\n  if (risk.includes(\"critical\")) return \"CRITICAL\";\n  if (risk.includes(\"high\")) return \"HIGH\";\n  if (risk.includes(\"medium\") || risk.includes(\"moderate\")) return \"MEDIUM\";\n  if (risk.includes(\"low\")) return \"LOW\";\n  return \"INFO\";\n}\n\nfunction cvssOf(severity) {\n  return ({ CRITICAL: 9.0, HIGH: 7.0, MEDIUM: 5.0, LOW: 2.0, INFO: 0 })[severity];\n}\n\nfunction statusOf(status) {\n  const normalized = String(status || \"OPEN\").toUpperCase();\n  if (normalized === \"RESOLVED\" || normalized === \"IGNORED\") return normalized;\n  return \"OPEN\";\n}\n\nconst monitoredHost = hostOf(monitoredTarget);\nconst endpoints = endpointItems\n  .flatMap((item) => collect(item, isEndpoint))\n  .filter((endpoint) => endpointHost(endpoint) === monitoredHost);\nconst alerts = alertItems\n  .flatMap((item) => collect(item, isAlert))\n  .filter((alert) => !endpointHost(alert) || endpointHost(alert) === monitoredHost);\n\nconst uniqueEndpointKeys = new Set();\nconst observedEndpoints = endpoints.filter((endpoint) => {\n  const key = endpoint.uuid || [endpointHost(endpoint), endpoint.method, endpoint.path].join(\"|\");\n  if (uniqueEndpointKeys.has(key)) return false;\n  uniqueEndpointKeys.add(key);\n  return true;\n});\n\nconst uniqueAlertKeys = new Set();\nconst activeAlerts = alerts.filter((alert) => {\n  const endpoint = alert.apiEndpoint || {};\n  const key = alert.uuid || [alert.type, endpointHost(alert), endpoint.method, endpoint.path, alert.createdAt].join(\"|\");\n  if (uniqueAlertKeys.has(key)) return false;\n  uniqueAlertKeys.add(key);\n  return true;\n});\n\nfunction endpointKey(endpoint) {\n  return [endpointHost(endpoint), String(endpoint.method || \"\").toUpperCase(), String(endpoint.path || \"\")].join(\"|\");\n}\n\nconst alertsByEndpoint = new Map();\nfor (const alert of activeAlerts) {\n  const endpoint = alert.apiEndpoint || {};\n  const key = alert.apiEndpointUuid || endpoint.uuid || endpointKey(endpoint);\n  if (!alertsByEndpoint.has(key)) alertsByEndpoint.set(key, []);\n  alertsByEndpoint.get(key).push(alert);\n}\n\nfunction matchingAlerts(endpoint) {\n  return alertsByEndpoint.get(endpoint.uuid) || alertsByEndpoint.get(endpointKey(endpoint)) || [];\n}\n\nconst findings = observedEndpoints.map((endpoint) => {\n  const method = String(endpoint.method || \"API\").toUpperCase();\n  const path = String(endpoint.path || \"unknown endpoint\");\n  const matchedAlerts = matchingAlerts(endpoint);\n  const alert = matchedAlerts[0];\n  const severity = alert ? severityOf(alert.riskScore || alert.severity) : \"INFO\";\n  const type = alert ? String(alert.type || \"Security Alert\") : null;\n  const rawDescription = alert?.description ||\n    (\"Metlo observed API traffic for \" + method + \" \" + path + \" on \" + displayTarget + \". No security alert is currently attached to this endpoint.\");\n  const description = String(rawDescription).split(monitoredHost).join(displayTarget);\n\n  return {\n    title: alert\n      ? text(\"Metlo Alert - \" + type + \" - \" + method + \" \" + path, \"Metlo Alert\", 500)\n      : text(\"Metlo Observed Endpoint - \" + method + \" \" + path, \"Metlo Endpoint\", 500),\n    severity,\n    description: text(description, \"Metlo observed an API endpoint.\", 20000),\n    remediation: alert\n      ? \"Review this detected endpoint and apply suitable authentication, authorization, and data exposure controls.\"\n      : \"Review the endpoint inventory and continue monitoring it for security alerts.\",\n    target: displayTarget,\n    status: alert ? statusOf(alert.status) : \"OPEN\",\n    cvss: cvssOf(severity)\n  };\n});\n\nconst observedAlertKeys = new Set(observedEndpoints.flatMap((endpoint) =>\n  matchingAlerts(endpoint).map((alert) => alert.uuid || alert.apiEndpointUuid || endpointKey(alert.apiEndpoint || {}))\n));\n\nfor (const alert of activeAlerts) {\n  const key = alert.uuid || alert.apiEndpointUuid || endpointKey(alert.apiEndpoint || {});\n  if (observedAlertKeys.has(key)) continue;\n  const endpoint = alert.apiEndpoint || {};\n  const method = String(endpoint.method || \"API\").toUpperCase();\n  const path = String(endpoint.path || \"unknown endpoint\");\n  const severity = severityOf(alert.riskScore || alert.severity);\n  const rawDescription = alert.description || (\"Metlo reported an alert for \" + method + \" \" + path + \".\");\n  findings.push({\n    title: text(\"Metlo Alert - \" + String(alert.type || \"Security Alert\") + \" - \" + method + \" \" + path, \"Metlo Alert\", 500),\n    severity,\n    description: text(String(rawDescription).split(monitoredHost).join(displayTarget), \"Metlo reported a security alert.\", 20000),\n    remediation: \"Investigate this Metlo alert and remediate exposure or controls on the affected API endpoint.\",\n    target: displayTarget,\n    status: statusOf(alert.status),\n    cvss: cvssOf(severity)\n  });\n}\n\nif (findings.length === 0) {\n  findings.push({\n    title: \"Metlo No Traffic Captured - \" + displayTarget,\n    severity: \"INFO\",\n    description: \"Metlo has not received API traffic for \" + displayTarget + \". Visiting an endpoint only appears here after the target is connected to a Metlo agent, proxy, or ingestor.\",\n    remediation: \"Connect this API's traffic to Metlo ingestion, then make requests to its endpoints and run this query again.\",\n    target: displayTarget,\n    status: \"OPEN\",\n    cvss: 0\n  });\n}\n\nfunction countSeverity(severity) {\n  return findings.filter((finding) => finding.severity === severity).length;\n}\n\nreturn [{\n  json: {\n    toolName: \"metlo\",\n    target: displayTarget,\n    status: \"completed\",\n    findings,\n    summary: {\n      total: findings.length,\n      critical: countSeverity(\"CRITICAL\"),\n      high: countSeverity(\"HIGH\"),\n      medium: countSeverity(\"MEDIUM\"),\n      low: countSeverity(\"LOW\"),\n      info: countSeverity(\"INFO\")\n    },\n    meta: {\n      tool: \"metlo\",\n      scanJobId,\n      targetName: payload.targetName || \"metlo-target\",\n      displayTarget,\n      monitoredHost,\n      collectionMode: \"passive_telemetry\",\n      generatedTraffic: false,\n      observedEndpointCount: observedEndpoints.length,\n      alertCount: activeAlerts.length\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        -4192
+      ],
+      "id": "85f86b91-c8fb-4330-91cf-fc08a4f5981e",
+      "name": "Normalize Metlo Alerts"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\n// Metlo analyzes traffic already observed by its collector. A portal scan\n// should query that telemetry and its alerts, not actively probe the target.\nreturn [{\n  json: {\n    ...input,\n    collectionMode: \"passive_telemetry\",\n    generatedTraffic: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        -4192
+      ],
+      "id": "39d65dc4-ad75-46fe-be0f-348ae435d570",
+      "name": "Metlo Passive Observation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\n// รองรับกรณี body เป็น array จาก Webhook/Switch\nconst bodyRaw = input.body ?? input;\nconst body = Array.isArray(bodyRaw) ? (bodyRaw[0] || {}) : bodyRaw;\n\nconst parameters = body.parameters || {};\n\nfunction normalizeTargetType(value, fallbackTarget = \"\") {\n  const v = String(value || \"\").toLowerCase().trim();\n\n  if ([\"ip\", \"single ip\", \"single_ip\"].includes(v)) return \"single_ip\";\n  if (v === \"cidr\") return \"cidr\";\n  if ([\"ip range\", \"ip_range\", \"range\"].includes(v)) return \"ip_range\";\n  if (v === \"domain\") return \"domain\";\n\n  const t = String(fallbackTarget || \"\").trim();\n\n  if (/^\\d{1,3}(\\.\\d{1,3}){3}\\s*-\\s*\\d{1,3}(\\.\\d{1,3}){3}$/.test(t)) return \"ip_range\";\n  if (/^\\d{1,3}(\\.\\d{1,3}){3}\\s*-\\s*\\d{1,3}$/.test(t)) return \"ip_range\";\n  if (/^\\d{1,3}(\\.\\d{1,3}){3}\\/\\d{1,2}$/.test(t)) return \"cidr\";\n  if (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(t)) return \"single_ip\";\n\n  return \"domain\";\n}\n\nfunction normalizeScanProfile(value) {\n  const v = String(value || \"\").toLowerCase().trim();\n\n  if (v.includes(\"quick\")) return \"quick\";\n  if (v.includes(\"high\")) return \"high_risk\";\n  if (v.includes(\"all\")) return \"all_scripts\";\n  if (v.includes(\"full\")) return \"full\";\n  if (v.includes(\"agent\")) return \"agent_only\";\n\n  return \"quick\";\n}\n\n// เดา target type ก่อน\nconst rawTargetType =\n  parameters.target_type ||\n  parameters.targetType ||\n  body.targetType ||\n  body.assetType ||\n  body.target_type;\n\n// สำคัญ: เลือก target ตามชนิดก่อน ห้ามหยิบ parameters.target ก่อนเสมอ\nfunction pickTargetByType(type) {\n  const t = String(type || \"\").toLowerCase().trim();\n\n  if ([\"ip_range\", \"ip range\", \"range\"].includes(t)) {\n    return (\n      parameters.ip_range ||\n      parameters.range ||\n      body.ip_range ||\n      body.range ||\n      parameters.target ||\n      parameters.target_ip ||\n      body.target ||\n      body.target_ip ||\n      body.targets?.[0]\n    );\n  }\n\n  if (t === \"cidr\") {\n    return (\n      parameters.cidr ||\n      body.cidr ||\n      parameters.target ||\n      parameters.target_ip ||\n      body.target ||\n      body.target_ip ||\n      body.targets?.[0]\n    );\n  }\n\n  if (t === \"domain\") {\n    return (\n      parameters.domain ||\n      body.domain ||\n      parameters.target ||\n      body.target ||\n      body.targets?.[0]\n    );\n  }\n\n  return (\n    parameters.target_ip ||\n    parameters.target ||\n    body.target_ip ||\n    body.target ||\n    body.targets?.[0]\n  );\n}\n\nlet target = pickTargetByType(rawTargetType);\n\nif (!target) {\n  throw new Error(\n    `Missing target. Received body=${JSON.stringify(body).slice(0, 500)}`\n  );\n}\n\ntarget = String(target).trim();\n\nconst targetType = normalizeTargetType(rawTargetType, target);\n\nconst scanProfile = normalizeScanProfile(\n  parameters.scan_profile ||\n  parameters.scanProfile ||\n  body.scanProfile ||\n  body.template ||\n  \"quick\"\n);\n\nlet callbackUrl =\n  body.callbackUrl ||\n  input.callbackUrl ||\n  \"http://host.docker.internal:3000/api/scans/callback\";\n\nif (callbackUrl.includes(\"localhost:3000\")) {\n  callbackUrl = callbackUrl.replace(\"localhost\", \"host.docker.internal\");\n}\n\nreturn [\n  {\n    json: {\n      scanJobId: body.scanJobId,\n      projectId: body.projectId,\n      toolName: \"sirius\",\n\n      target,\n      targetType,\n      scanProfile,\n      priority: Number(body.priority || parameters.priority || 3),\n\n      callbackUrl,\n      signature: body.signature,\n      netraSignature: input.headers?.[\"x-netra-signature\"],\n\n      siriusBaseUrl: \"http://sirius-api:9001\",\n\n      originalBody: body\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        -5584
+      ],
+      "id": "e3718f70-9fcb-466a-b267-31c3be05e5a1",
+      "name": "Prepare Sirius Payload1"
+    },
+    {
+      "parameters": {
+        "amount": "={{ 120 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -592,
+        -5360
+      ],
+      "id": "ad7a046b-4735-48fc-9eb5-9f8348293504",
+      "name": "Wait sirius1",
+      "webhookId": "d2572924-4ec6-4291-988b-7eb1cd1d901b"
+    },
+    {
+      "parameters": {
+        "url": "http://sirius-api:9001/host",
+        "sendQuery": false,
+        "specifyQuery": "json",
+        "jsonQuery": "={{\n  (\n    !$json.error\n    &&\n    (\n      (Array.isArray($json.vulnerabilities) && $json.vulnerabilities.length > 0)\n      ||\n      (Array.isArray($json.data?.vulnerabilities) && $json.data.vulnerabilities.length > 0)\n      ||\n      (Array.isArray($json.ports) && $json.ports.length > 0)\n      ||\n      (Array.isArray($json.data?.ports) && $json.data.ports.length > 0)\n    )\n  ).toString()\n}}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"X-API-Key\": \"f48ace3dcf26db85c389c3ffc85c77837228f2af14ad964b6d56a7b93d731c28\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -112,
+        -5360
+      ],
+      "id": "94b6a836-ee73-4d8f-93d0-babb2ef66bf2",
+      "name": "Get Sirius Host Result1",
+      "retryOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const contextItems = $input.all().map(item => item.json || {});\n\nconst preparedFallback = $(\"Prepare Sirius Payload1\").first().json || {};\nconst firstContext = contextItems[0] || {};\n\nconst requestedTarget =\n  firstContext.target ||\n  preparedFallback.target ||\n  \"N/A\";\n\nconst targetType =\n  firstContext.originalTargetType ||\n  firstContext.targetType ||\n  preparedFallback.targetType ||\n  \"single_ip\";\n\nconst scanJobId =\n  firstContext.scanJobId ||\n  preparedFallback.scanJobId;\n\nconst projectId =\n  firstContext.projectId ||\n  preparedFallback.projectId;\n\nconst scanProfile =\n  firstContext.scanProfile ||\n  preparedFallback.scanProfile;\n\nconst inputItems = contextItems;\n\nfunction ipToInt(ip) {\n  const parts = String(ip).trim().split(\".\").map(Number);\n  if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return null;\n  return (((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3]) >>> 0;\n}\n\nfunction isIpInRange(ip, range) {\n  const [start, endRaw] = String(range).split(\"-\").map(s => s.trim());\n  if (!start || !endRaw) return false;\n\n  let end = endRaw;\n\n  // รองรับ 192.168.87.130-139\n  if (!end.includes(\".\")) {\n    const p = start.split(\".\");\n    if (p.length === 4) {\n      end = `${p[0]}.${p[1]}.${p[2]}.${end}`;\n    }\n  }\n\n  const n = ipToInt(ip);\n  const a = ipToInt(start);\n  const b = ipToInt(end);\n\n  if (n === null || a === null || b === null) return false;\n  return n >= Math.min(a, b) && n <= Math.max(a, b);\n}\n\nfunction isIpInCidr(ip, cidr) {\n  const [base, maskText] = String(cidr).split(\"/\");\n  const mask = Number(maskText);\n  const n = ipToInt(ip);\n  const b = ipToInt(base);\n\n  if (n === null || b === null || Number.isNaN(mask) || mask < 0 || mask > 32) return false;\n\n  const m = mask === 0 ? 0 : (0xffffffff << (32 - mask)) >>> 0;\n  return (n & m) === (b & m);\n}\n\nfunction pickHost(v) {\n  return (\n    v.host_ip ||\n    v.hostIp ||\n    v.ip ||\n    v.target ||\n    v.host ||\n    v.hostname ||\n    v.asset_ip ||\n    v.assetIp ||\n    v.node_ip ||\n    \"\"\n  );\n}\n\nfunction hasRealHost(v) {\n  return String(pickHost(v) || \"\").trim() !== \"\";\n}\n\nfunction matchesTargetScope(v) {\n  const host = String(pickHost(v) || v.__sourceTarget || \"\").trim();\n  const hostname = String(v.hostname || v.host || v.name || \"\").trim();\n\n  // สำคัญ:\n  // /host/vulnerabilities/all ของ Sirius มักคืน CVE aggregate ไม่มี host/ip\n  // ถ้าไม่มี host ห้าม filter ทิ้ง ไม่งั้นจะเหลือ 0 finding\n  if (!host) return true;\n\n  if (targetType === \"single_ip\") {\n    return host === requestedTarget;\n  }\n\n  if (targetType === \"ip_range\") {\n    return isIpInRange(host, requestedTarget);\n  }\n\n  if (targetType === \"cidr\") {\n    return isIpInCidr(host, requestedTarget);\n  }\n\n  if (targetType === \"domain\") {\n    return host.includes(requestedTarget) || hostname.includes(requestedTarget);\n  }\n\n  return true;\n}\n\nfunction pickId(v, index) {\n  return (\n    v.vid ||\n    v.cve ||\n    v.cveId ||\n    v.cve_id ||\n    v.id ||\n    v.cveID ||\n    v.name ||\n    v.title ||\n    `SIRIUS-FINDING-${index + 1}`\n  );\n}\n\nfunction pickCvssScore(v) {\n  const candidates = [\n    v.cvss,\n    v.cvssScore,\n    v.cvss_score,\n    v.baseScore,\n    v.base_score,\n    v.cvssV3,\n    v.cvss_v3,\n    v.cvssV2,\n    v.cvss_v2,\n    v.cvss3,\n    v.cvss2,\n\n    v.riskScore?.CVSSV3?.cvssV3?.baseScore,\n    v.riskScore?.CVSSV2?.cvssV2?.baseScore,\n    v.risk_score?.CVSSV3?.cvssV3?.baseScore,\n    v.risk_score?.CVSSV2?.cvssV2?.baseScore,\n\n    v.cvssData?.baseScore,\n    v.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore,\n    v.metrics?.cvssMetricV30?.[0]?.cvssData?.baseScore,\n    v.metrics?.cvssMetricV2?.[0]?.cvssData?.baseScore\n  ];\n\n  for (const value of candidates) {\n    const n = Number(value);\n    if (!Number.isNaN(n) && n >= 0 && n <= 10) return n;\n  }\n\n  return null;\n}\n\nfunction pickRiskScore(v) {\n  const candidates = [\n    v.riskScore,\n    v.risk_score,\n    v.score,\n    v.risk\n  ];\n\n  for (const value of candidates) {\n    if (typeof value === \"object\") continue;\n\n    const n = Number(value);\n    if (!Number.isNaN(n)) return n;\n  }\n\n  return null;\n}\n\nfunction normalizeSeverityText(value) {\n  const s = String(value || \"\").toUpperCase().trim();\n\n  if ([\"CRITICAL\", \"HIGH\", \"MEDIUM\", \"LOW\", \"INFO\"].includes(s)) return s;\n\n  if ([\"INFORMATIONAL\", \"INFORMATIVE\"].includes(s)) return \"INFO\";\n  if ([\"IMPORTANT\"].includes(s)) return \"HIGH\";\n  if ([\"MODERATE\"].includes(s)) return \"MEDIUM\";\n  if ([\"NEGLIGIBLE\", \"UNKNOWN\", \"NONE\"].includes(s)) return \"INFO\";\n\n  return \"\";\n}\n\nfunction severityFromCvss(score) {\n  const n = Number(score);\n\n  if (Number.isNaN(n) || n <= 0) return \"INFO\";\n  if (n >= 9.0) return \"CRITICAL\";\n  if (n >= 7.0) return \"HIGH\";\n  if (n >= 4.0) return \"MEDIUM\";\n  return \"LOW\";\n}\n\nfunction severityFromSiriusRiskScore(score) {\n  const n = Number(score);\n\n  if (Number.isNaN(n)) return \"INFO\";\n\n  // fallback เท่านั้น ไม่ใช่สูตรที่ตรง Sirius UI 100%\n  // เพราะ riskScore ของ /host/vulnerabilities/all ไม่ได้แยก critical/info เหมือน UI\n  if (n >= 5) return \"HIGH\";\n  if (n >= 4) return \"MEDIUM\";\n  if (n >= 2) return \"LOW\";\n  return \"INFO\";\n}\n\nfunction pickSeverity(v) {\n  const explicitCandidates = [\n    v.severity,\n    v.baseSeverity,\n    v.base_severity,\n    v.cvssSeverity,\n    v.cvss_severity,\n    v.riskLevel,\n    v.risk_level,\n    v.level,\n    v.priority,\n\n    v.riskScore?.CVSSV3?.cvssV3?.baseSeverity,\n    v.riskScore?.CVSSV2?.severity,\n    v.risk_score?.CVSSV3?.cvssV3?.baseSeverity,\n    v.risk_score?.CVSSV2?.severity,\n\n    v.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity,\n    v.metrics?.cvssMetricV30?.[0]?.cvssData?.baseSeverity,\n    v.metrics?.cvssMetricV2?.[0]?.baseSeverity\n  ];\n\n  for (const value of explicitCandidates) {\n    const normalized = normalizeSeverityText(value);\n    if (normalized) return normalized;\n  }\n\n  const cvss = pickCvssScore(v);\n  if (cvss !== null) return severityFromCvss(cvss);\n\n  const riskScore = pickRiskScore(v);\n  return severityFromSiriusRiskScore(riskScore);\n}\n\nfunction pickDisplayScore(v) {\n  const cvss = pickCvssScore(v);\n  if (cvss !== null) return cvss;\n\n  const riskScore = pickRiskScore(v);\n  if (riskScore !== null) return riskScore;\n\n  return 0;\n}\n\nfunction safeText(value, fallback = \"\", max = 1500) {\n  return String(value ?? fallback).slice(0, max);\n}\n\nfunction extractVulnerabilities(obj) {\n  if (!obj || typeof obj !== \"object\") return [];\n\n  const sourceTarget =\n    obj.target ||\n    obj.ip ||\n    obj.host_ip ||\n    obj.hostIp ||\n    obj.hostname ||\n    obj.host?.ip ||\n    obj.host?.host ||\n    obj.host?.hostname ||\n    obj.data?.target ||\n    obj.data?.ip ||\n    obj.data?.host ||\n    obj.data?.hostname ||\n    requestedTarget;\n\n  function attachSource(arr) {\n    return arr\n      .filter(v => v && typeof v === \"object\")\n      .map(v => ({\n        ...v,\n        __sourceTarget: pickHost(v) || sourceTarget\n      }));\n  }\n\n  if (Array.isArray(obj)) return obj.flatMap(hostItem => extractVulnerabilities(hostItem));\n  if (Array.isArray(obj.data)) return attachSource(obj.data);\n  if (Array.isArray(obj.vulnerabilities)) return attachSource(obj.vulnerabilities);\n  if (Array.isArray(obj.cves)) return attachSource(obj.cves);\n  if (Array.isArray(obj.results)) return attachSource(obj.results);\n  if (Array.isArray(obj.items)) return attachSource(obj.items);\n  if (obj.vid || obj.cve || obj.cveId || obj.cve_id || obj.cveID) return attachSource([obj]);\n\n  const host = obj.host || obj.data || obj;\n\n  const hostIp =\n    obj.ip ||\n    obj.target ||\n    obj.host_ip ||\n    obj.hostIp ||\n    host.ip ||\n    host.host_ip ||\n    host.hostIp ||\n    host.host ||\n    host.hostname ||\n    sourceTarget;\n\n  if (Array.isArray(host.vulnerabilities)) {\n    return host.vulnerabilities.map(v => ({\n      ...v,\n      __sourceTarget: pickHost(v) || hostIp\n    }));\n  }\n\n  if (Array.isArray(host.cves)) {\n    return host.cves.map(v => ({\n      ...v,\n      __sourceTarget: pickHost(v) || hostIp\n    }));\n  }\n\n  return [];\n}\n\nlet rawVulnerabilities = [];\n\nfor (const item of inputItems) {\n  rawVulnerabilities.push(...extractVulnerabilities(item));\n}\n\n// กรณี /host/vulnerabilities/all คืนหลาย item ตรง ๆ เช่น 330 items\nif (!rawVulnerabilities.length && inputItems.length > 1) {\n  rawVulnerabilities = inputItems.filter(v => v && typeof v === \"object\");\n}\n\n// filter ตาม target type เฉพาะกรณี record มี host จริง\nconst scopedVulnerabilities = rawVulnerabilities.filter(matchesTargetScope);\n\n// ไม่ dedupe เพื่อให้จำนวนตรงกับ Sirius UI\nconst uniqueVulns = scopedVulnerabilities.filter(v => v && typeof v === \"object\");\n\nlet findings = uniqueVulns.map((v, index) => {\n  const id = pickId(v, index);\n  const score = pickDisplayScore(v);\n  const severity = pickSeverity(v);\n\n  const host =\n    pickHost(v) ||\n    v.__sourceTarget ||\n    requestedTarget;\n\n  return {\n    title: safeText(v.title || v.name || id, id, 200),\n    severity,\n    description: safeText(\n      v.description ||\n      v.desc ||\n      v.summary ||\n      `Sirius detected vulnerability ${id}.`,\n      `Sirius detected vulnerability ${id}.`,\n      1500\n    ),\n    remediation: safeText(\n      v.remediation ||\n      v.solution ||\n      v.fix ||\n      \"Review the affected service/package and apply vendor-recommended updates or mitigations.\",\n      \"Review the affected service/package and apply vendor-recommended updates or mitigations.\",\n      1000\n    ),\n    target: safeText(host, requestedTarget, 200),\n    status: \"OPEN\",\n    cvss: score,\n    tool: \"sirius\"\n  };\n});\n\nif (!findings.length) {\n  findings = [\n    {\n      title: \"Sirius Scan Completed\",\n      severity: \"INFO\",\n      description:\n        \"Sirius scan completed or aggregate endpoint was queried, but no vulnerability records were returned.\",\n      remediation:\n        \"Check Sirius UI, selected scan profile, target type, agent availability, and whether /host/vulnerabilities/all contains records.\",\n      target: requestedTarget,\n      status: \"OPEN\",\n      cvss: 0,\n      tool: \"sirius\"\n    }\n  ];\n}\n\nconst summary = {\n  total: findings.length,\n  returned: findings.length,\n  critical: findings.filter(f => f.severity === \"CRITICAL\").length,\n  high: findings.filter(f => f.severity === \"HIGH\").length,\n  medium: findings.filter(f => f.severity === \"MEDIUM\").length,\n  low: findings.filter(f => f.severity === \"LOW\").length,\n  info: findings.filter(f => f.severity === \"INFO\").length\n};\n\nconst hosts = [...new Set(findings.map(f => f.target))]\n  .filter(Boolean)\n  .map(ip => ({\n    ip,\n    total: findings.filter(f => f.target === ip).length,\n    critical: findings.filter(f => f.target === ip && f.severity === \"CRITICAL\").length,\n    high: findings.filter(f => f.target === ip && f.severity === \"HIGH\").length,\n    medium: findings.filter(f => f.target === ip && f.severity === \"MEDIUM\").length,\n    low: findings.filter(f => f.target === ip && f.severity === \"LOW\").length,\n    info: findings.filter(f => f.target === ip && f.severity === \"INFO\").length\n  }));\n\nreturn [\n  {\n    json: {\n      scanJobId,\n      projectId,\n      toolName: \"sirius\",\n      target: requestedTarget,\n      targetType,\n      status: \"completed\",\n\n      findings: findings.map(f => ({\n        title: String(f.title || \"Unknown Sirius Finding\").slice(0, 200),\n        severity: String(f.severity || \"INFO\").toUpperCase(),\n        description: String(\n          f.description || \"Sirius detected a vulnerability on the target.\"\n        ).slice(0, 1500),\n        remediation: String(\n          f.remediation || \"Review the affected service/package and apply vendor-recommended updates or mitigations.\"\n        ).slice(0, 1000),\n        target: String(f.target || requestedTarget || \"N/A\").slice(0, 200),\n        status: String(f.status || \"OPEN\").toUpperCase(),\n        cvss: Number(f.cvss || 0),\n        tool: \"sirius\"\n      })),\n\n      summary,\n\n      meta: {\n        tool: \"sirius\",\n        requestedTarget,\n        targetType,\n        scanProfile,\n        sourceEndpoint: \"/host\",\n        beforeFilterCount: rawVulnerabilities.length,\n        afterScopeFilterCount: scopedVulnerabilities.length,\n        afterDedupeCount: uniqueVulns.length,\n        hasHostField: rawVulnerabilities.some(hasRealHost),\n        hosts\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        -5408
+      ],
+      "id": "993b244f-2c7e-49e4-a861-5153b2753d55",
+      "name": "Code in JavaScript sirius1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "87bd960a-6d4b-45cc-a924-54231192f2e3",
+              "leftValue": "={{\n  (\n    !$json.error\n    &&\n    !String($json.message || $json.error?.message || \"\").includes(\"host not found\")\n    &&\n    (\n      (Array.isArray($json.vulnerabilities) && $json.vulnerabilities.length > 0)\n      ||\n      (Array.isArray($json.data?.vulnerabilities) && $json.data.vulnerabilities.length > 0)\n      ||\n      (Array.isArray($json.host?.vulnerabilities) && $json.host.vulnerabilities.length > 0)\n      ||\n      (Array.isArray($json.cves) && $json.cves.length > 0)\n      ||\n      (Array.isArray($json.data?.cves) && $json.data.cves.length > 0)\n      ||\n      (Array.isArray($json.host?.cves) && $json.host.cves.length > 0)\n      ||\n      (\n        Array.isArray($json.ports)\n        &&\n        $json.ports.some(p =>\n          (Array.isArray(p.vulnerabilities) && p.vulnerabilities.length > 0)\n          ||\n          (Array.isArray(p.cves) && p.cves.length > 0)\n        )\n      )\n      ||\n      (\n        Array.isArray($json.data?.ports)\n        &&\n        $json.data.ports.some(p =>\n          (Array.isArray(p.vulnerabilities) && p.vulnerabilities.length > 0)\n          ||\n          (Array.isArray(p.cves) && p.cves.length > 0)\n        )\n      )\n    )\n  ).toString()\n}}",
+              "rightValue": "=true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        -5376
+      ],
+      "id": "a5aa388b-4d03-427f-9360-62f29f5e45ed",
+      "name": "IF Sirius Result Ready"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $(\"Prepare Sirius Payload1\").first().json || {};\n\nif (!prepared.target) {\n  throw new Error(\n    `Prepare Queue Error: missing prepared.target. prepared=${JSON.stringify(prepared).slice(0, 800)}`\n  );\n}\n\nconst target = String(prepared.target).trim();\nconst originalTargetType = String(prepared.targetType || \"single_ip\").trim();\n\n// ถ้า target ถูก split มาเป็น IP เดี่ยวแล้ว ถึง request เดิมจะเป็น ip_range\n// ตอนส่งเข้า Sirius ต้องใช้ single_ip\nfunction isSingleIp(value) {\n  return /^\\d{1,3}(\\.\\d{1,3}){3}$/.test(String(value || \"\").trim());\n}\n\nfunction isCidr(value) {\n  return /^\\d{1,3}(\\.\\d{1,3}){3}\\/\\d{1,2}$/.test(String(value || \"\").trim());\n}\n\nfunction isRange(value) {\n  return String(value || \"\").includes(\"-\");\n}\n\nfunction isDomain(value) {\n  const v = String(value || \"\").trim();\n  return v && !isSingleIp(v) && !isCidr(v) && !isRange(v);\n}\n\nlet siriusTargetType = originalTargetType;\n\nif (isSingleIp(target)) {\n  siriusTargetType = \"single_ip\";\n} else if (isCidr(target)) {\n  siriusTargetType = \"cidr\";\n} else if (isRange(target)) {\n  siriusTargetType = \"ip_range\";\n} else if (isDomain(target)) {\n  siriusTargetType = \"domain\";\n}\n\nif (![\"single_ip\", \"cidr\", \"ip_range\", \"domain\"].includes(siriusTargetType)) {\n  throw new Error(`Prepare Queue Error: invalid siriusTargetType=${siriusTargetType}`);\n}\n\nconst safeId =\n  prepared.scanJobId && String(prepared.scanJobId).startsWith(\"scan-\")\n    ? prepared.scanJobId\n    : `scan-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;\n\nreturn [\n  {\n    json: {\n      id: safeId,\n\n      targets: [\n        {\n          value: target,\n          type: siriusTargetType\n        }\n      ],\n\n      options: {\n        template_id: prepared.scanProfile || \"quick\"\n      },\n\n      priority: Number(prepared.priority || 3),\n\n      meta: {\n        portalScanJobId: prepared.scanJobId,\n        projectId: prepared.projectId,\n        toolName: \"sirius\",\n\n        // target จริงที่ส่งให้ Sirius\n        target,\n\n        // type จริงที่ Sirius ควรใช้\n        targetType: siriusTargetType,\n\n        // type เดิมจาก portal เช่น ip_range\n        originalTargetType,\n\n        scanProfile: prepared.scanProfile || \"quick\"\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        -5584
+      ],
+      "id": "d351fe64-6e74-4bd0-86dc-01212607cf37",
+      "name": "Prepare Sirius Queue Message"
+    },
+    {
+      "parameters": {
+        "queue": "scan",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rabbitmq",
+      "typeVersion": 1.1,
+      "position": [
+        -304,
+        -5584
+      ],
+      "id": "407d2c6e-7f71-4a48-a7fb-c98a1b95d0c4",
+      "name": "RabbitMQ Publish Scan Job",
+      "credentials": {
+        "rabbitmq": {
+          "id": "7xgoCWSIiSXsa2Uh",
+          "name": "RabbitMQ account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## sirius\n",
+        "height": 672,
+        "width": 1892
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        -5696
+      ],
+      "id": "5d5d6cb5-7fd8-45a1-89f4-8c5fadaaf11a",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "body",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [
+        -1696,
+        -5392
+      ],
+      "id": "81022326-1687-4ef5-b73e-3148616fa5bb",
+      "name": "Item Lists1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1472,
+        -5392
+      ],
+      "id": "5c85929f-88c0-4a3e-aad4-367e1bb32e2c",
+      "name": "Loop1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const waitItems = $input.all();\nconst preparedItems = $(\"Prepare Sirius Payload1\").all().map(i => i.json || {});\n\nreturn waitItems.map((item, index) => {\n  const prepared = preparedItems[index] || {};\n\n  return {\n    json: {\n      ...item.json,\n\n      scanJobId: prepared.scanJobId,\n      projectId: prepared.projectId,\n      toolName: prepared.toolName || \"sirius\",\n\n      target: prepared.target,\n      targetType: prepared.targetType,\n      originalTargetType:\n        prepared.originalBody?.parameters?.target_type ||\n        prepared.targetType ||\n        \"single_ip\",\n\n      scanProfile: prepared.scanProfile,\n      callbackUrl: prepared.callbackUrl,\n      signature: prepared.signature,\n      netraSignature: prepared.netraSignature,\n      siriusBaseUrl: prepared.siriusBaseUrl || \"http://sirius-api:9001\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        -5360
+      ],
+      "id": "fa8a467c-748e-412c-a8b2-5f14d91f4ca1",
+      "name": "Restore Sirius Context"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "value": "={{ $json.meta.scanJobId }}",
+        "dataPropertyName": "signature"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -4560
+      ],
+      "id": "56b7f2ab-6a20-4bb6-ae29-13e84b488cd2",
+      "name": "Crypto2",
+      "credentials": {
+        "crypto": {
+          "id": "ohcQ9N9jBq2pgBBJ",
+          "name": "Crypto account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst rawBody = input.body ?? input;\nconst bodyItems = Array.isArray(rawBody) ? rawBody : [rawBody];\n\nfunction clone(obj) {\n  return JSON.parse(JSON.stringify(obj || {}));\n}\n\nfunction splitMulti(value, splitSpace = false) {\n  if (Array.isArray(value)) {\n    return value.flatMap(v => splitMulti(v, splitSpace));\n  }\n\n  const regex = splitSpace ? /[\\n,; ]+/ : /[\\n,;]+/;\n\n  return String(value || \"\")\n    .split(regex)\n    .map(v => v.trim())\n    .filter(Boolean);\n}\n\nfunction getToolName(item) {\n  return String(\n    item?.toolName ||\n    item?.parameters?.toolName ||\n    input?.toolName ||\n    \"\"\n  ).toLowerCase().trim();\n}\n\nfunction getTargets(item) {\n  const p = item?.parameters || {};\n\n  return splitMulti(\n    p.target_ips ||\n    p.target_ip ||\n    item?.target_ips ||\n    item?.target_ip ||\n    item?.target,\n    true\n  );\n}\n\nfunction getUsers(item) {\n  const p = item?.parameters || {};\n\n  return splitMulti(\n    p.ssh_users ||\n    p.ssh_user ||\n    item?.ssh_users ||\n    item?.ssh_user ||\n    item?.sshUser ||\n    item?.username,\n    false\n  );\n}\n\nfunction getPorts(item) {\n  const p = item?.parameters || {};\n\n  return splitMulti(\n    p.ssh_ports ||\n    p.ssh_port ||\n    p.sshPort ||\n    item?.ssh_ports ||\n    item?.ssh_port ||\n    item?.sshPort ||\n    22,\n    false\n  );\n}\n\nfunction toPort(value) {\n  const n = Number(value || 22);\n  return Number.isFinite(n) && n > 0 ? n : 22;\n}\n\nfunction safeServerName(ip, index = 0) {\n  return `target_${String(ip || `unknown_${index + 1}`).replace(/[^A-Za-z0-9]/g, \"_\")}`;\n}\n\nfunction makeVulsItem(originalItem, target, user, port, index) {\n  const out = clone(originalItem);\n  out.parameters = out.parameters || {};\n\n  out.toolName = \"vuls\";\n\n  out.target = target;\n  out.target_ip = target;\n  delete out.target_ips;\n\n  out.parameters.target_ip = target;\n  delete out.parameters.target_ips;\n\n  out.ssh_user = user;\n  out.sshUser = user;\n  out.username = user;\n\n  out.parameters.ssh_user = user;\n  delete out.parameters.ssh_users;\n\n  out.ssh_port = port;\n  out.sshPort = port;\n  out.parameters.ssh_port = port;\n\n  const serverLabel = safeServerName(target, index);\n\n  out.serverLabel = serverLabel;\n  out.serverName = serverLabel;\n  out.ip = target;\n\n  // สำคัญ: ห้ามบังคับใช้ scanJobId เดียวกันทุก IP\n  // ให้เก็บ scanJobId / signature ของ item นั้น ๆ\n  out.scanJobId = originalItem.scanJobId || out.scanJobId || null;\n  out.projectId = originalItem.projectId || out.projectId || null;\n  out.callbackUrl = originalItem.callbackUrl || out.callbackUrl || null;\n  out.signature = originalItem.signature || out.signature || null;\n\n  return out;\n}\n\n// ถ้าไม่ใช่ Vuls ให้ปล่อยผ่านเหมือนเดิม เพื่อไม่กระทบ tool อื่น\nconst hasVuls = bodyItems.some(item => getToolName(item) === \"vuls\");\n\nif (!hasVuls) {\n  return [\n    {\n      json: input\n    }\n  ];\n}\n\nconst normalizedBody = [];\n\n// เก็บ users/ports แบบ global เผื่อ body ถูก split target มาแล้ว\nlet globalUsers = [];\nlet globalPorts = [];\n\nfor (const item of bodyItems) {\n  if (getToolName(item) !== \"vuls\") continue;\n\n  const users = getUsers(item);\n  const ports = getPorts(item);\n\n  if (users.length > globalUsers.length) {\n    globalUsers = users;\n  }\n\n  if (ports.length > globalPorts.length) {\n    globalPorts = ports;\n  }\n}\n\nfor (const itemIndex in bodyItems) {\n  const item = bodyItems[itemIndex];\n\n  if (getToolName(item) !== \"vuls\") {\n    normalizedBody.push(item);\n    continue;\n  }\n\n  const targets = getTargets(item);\n  const users = getUsers(item);\n  const ports = getPorts(item);\n\n  if (!targets.length) {\n    throw new Error(\"Vuls: missing target IP\");\n  }\n\n  // กรณี body ถูก split มาแล้ว:\n  // item 1 target เดียว แต่ ssh_user ยังเป็นหลายบรรทัดเหมือนกันทุก item\n  if (bodyItems.length > 1 && targets.length === 1) {\n    const target = targets[0];\n\n    const user =\n      globalUsers.length > 1\n        ? globalUsers[Number(itemIndex)]\n        : users[0] || globalUsers[0];\n\n    const port =\n      globalPorts.length > 1\n        ? toPort(globalPorts[Number(itemIndex)])\n        : toPort(ports[0] || globalPorts[0] || 22);\n\n    if (!user) {\n      throw new Error(\n        `Vuls: target ${target} has no matching ssh_user at item index ${itemIndex}`\n      );\n    }\n\n    normalizedBody.push(makeVulsItem(item, target, user, port, Number(itemIndex)));\n    continue;\n  }\n\n  // กรณี body ยังไม่ถูก split: target/user หลายบรรทัดอยู่ใน item เดียว\n  if (!users.length) {\n    throw new Error(\"Vuls: missing ssh_user\");\n  }\n\n  if (users.length !== 1 && users.length !== targets.length) {\n    throw new Error(\n      `Vuls: number of ssh_user must be 1 or equal to number of targets. targets=${targets.length}, users=${users.length}`\n    );\n  }\n\n  if (ports.length !== 1 && ports.length !== targets.length) {\n    throw new Error(\n      `Vuls: number of ssh_port must be 1 or equal to number of targets. targets=${targets.length}, ports=${ports.length}`\n    );\n  }\n\n  targets.forEach((target, index) => {\n    const user = users.length === 1 ? users[0] : users[index];\n    const port = toPort(ports.length === 1 ? ports[0] : ports[index]);\n\n    normalizedBody.push(makeVulsItem(item, target, user, port, index));\n  });\n}\n\nconst batchTarget = normalizedBody.map(item => item.target).join(\",\");\nconst batchUsers = normalizedBody.map(item => item.ssh_user).join(\",\");\nconst batchPorts = normalizedBody.map(item => item.ssh_port).join(\",\");\nconst firstTarget = normalizedBody[0];\n\n// Keep Vuls multi-host scans as one loop item. Item Lists1 will split body\n// once, while Prepare Vuls Payload expands the comma-delimited hosts again.\nreturn [\n  {\n    json: {\n      ...input,\n      body: [\n        {\n          ...firstTarget,\n          target: batchTarget,\n          target_ip: batchTarget,\n          ip: batchTarget,\n          ssh_user: batchUsers,\n          sshUser: batchUsers,\n          username: batchUsers,\n          ssh_port: batchPorts,\n          sshPort: batchPorts,\n          parameters: {\n            ...(firstTarget.parameters || {}),\n            target_ip: batchTarget,\n            ssh_user: batchUsers,\n            ssh_port: batchPorts\n          }\n        }\n      ],\n      toolName: \"vuls\",\n      target: batchTarget,\n      target_ip: batchTarget,\n      ssh_user: batchUsers\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1872,
+        -5392
+      ],
+      "id": "29351ce5-eea0-4fd5-9bfd-c3c0a0a383ad",
+      "name": "Normalize Webhook Body"
+    },
+    {
+      "parameters": {
+        "url": "http://sirius-api:9001/host/vulnerabilities/all",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"X-API-Key\": \"f48ace3dcf26db85c389c3ffc85c77837228f2af14ad964b6d56a7b93d731c28\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        496,
+        -5392
+      ],
+      "id": "cbadb80d-1778-48eb-8bbe-4aef623a5fff",
+      "name": "Get Sirius Vulnerabilities All3",
+      "alwaysOutputData": true,
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ebfe4ce4-b142-4379-b0ed-dcc549279e2d",
+              "leftValue": "={{\n  (\n    Object.keys($json || {}).length > 0\n    &&\n    (\n      typeof $json.vid === \"string\"\n      ||\n      typeof $json.cve === \"string\"\n      ||\n      typeof $json.cveId === \"string\"\n      ||\n      typeof $json.id === \"string\"\n      ||\n      Array.isArray($json.vulnerabilities)\n      ||\n      Array.isArray($json.data)\n    )\n  ).toString()\n}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        -5392
+      ],
+      "id": "11da7c01-77db-4a08-adc8-08ce7be94b21",
+      "name": "IF Has CVE Data3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $json || {};\n\nreturn [\n  {\n    json: {\n      scanJobId: ctx.scanJobId,\n      projectId: ctx.projectId,\n      toolName: \"sirius\",\n      target: ctx.target || ctx.ip || \"N/A\",\n      targetType: ctx.targetType || ctx.originalTargetType || \"single_ip\",\n      status: \"completed\",\n\n      findings: [],\n\n      summary: {\n        total: 0,\n        returned: 0,\n        critical: 0,\n        high: 0,\n        medium: 0,\n        low: 0,\n        info: 0\n      },\n\n      meta: {\n        tool: \"sirius\",\n        ignored: true,\n        reason:\n          ctx.error?.message ||\n          ctx.message ||\n          \"No Sirius vulnerabilities for this host\",\n        target: ctx.target || ctx.ip || \"N/A\"\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -5136
+      ],
+      "id": "bcdcfbf6-f0a1-44e1-8e3b-e826d0ec7ab8",
+      "name": "Sirius Empty Result Payload"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "value": "={{ $json.meta.scanJobId }}",
+        "dataPropertyName": "signature"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        976,
+        -4064
+      ],
+      "id": "0c154ce2-1eef-4427-b37e-990097ecc00b",
+      "name": "Crypto10",
+      "credentials": {
+        "crypto": {
+          "id": "ohcQ9N9jBq2pgBBJ",
+          "name": "Crypto account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Webhook Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sirius Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Vuls Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Metlo Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Loop1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crypto": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Vuls Payload": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Crypto2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Metlo Payload1": {
+      "main": [
+        [
+          {
+            "node": "Metlo Passive Observation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sirius Payload1": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sirius Queue Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait sirius1": {
+      "main": [
+        [
+          {
+            "node": "Restore Sirius Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sirius Host Result1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript sirius1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sirius Empty Result Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript sirius1": {
+      "main": [
+        [
+          {
+            "node": "Crypto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Sirius Result Ready": {
+      "main": [
+        [
+          {
+            "node": "Get Sirius Vulnerabilities All3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Sirius Vulnerabilities All3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sirius Queue Message": {
+      "main": [
+        [
+          {
+            "node": "RabbitMQ Publish Scan Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RabbitMQ Publish Scan Job": {
+      "main": [
+        [
+          {
+            "node": "Wait sirius1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Item Lists1": {
+      "main": [
+        [
+          {
+            "node": "Loop1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Sirius Context": {
+      "main": [
+        [
+          {
+            "node": "Get Sirius Host Result1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crypto2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Body": {
+      "main": [
+        [
+          {
+            "node": "Item Lists1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sirius Vulnerabilities All3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript sirius1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has CVE Data3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript sirius1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript sirius1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sirius Empty Result Payload": {
+      "main": [
+        [
+          {
+            "node": "Crypto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metlo Passive Observation": {
+      "main": [
+        [
+          {
+            "node": "Get Metlo Endpoints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Metlo Endpoints": {
+      "main": [
+        [
+          {
+            "node": "Get Metlo Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Metlo Alerts": {
+      "main": [
+        [
+          {
+            "node": "Normalize Metlo Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Metlo Alerts": {
+      "main": [
+        [
+          {
+            "node": "Crypto2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e0fa52e5-f3dd-4a29-8272-d0e1c4b85584",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "688e49265f306841693641e97ac2313060b812e107443ec40ccc42750484af86"
+  },
+  "id": "VCOS2j5NTIsdlHuN",
+  "tags": []
+}
