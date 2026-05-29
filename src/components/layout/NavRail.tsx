@@ -42,8 +42,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: "MANAGE",
     items: [
       { id: "settings", href: "/settings", icon: "settings", label: "Settings" },
-      { id: "engagements", href: "/engagements", icon: "database", label: "Engagements" },
-      { id: "team", href: "/team", icon: "user", label: "Team" },
       { id: "audit", href: "/audit", icon: "lock", label: "Audit Log" },
     ],
   },

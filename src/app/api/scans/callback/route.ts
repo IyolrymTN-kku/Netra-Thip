@@ -3,6 +3,7 @@ import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { ScanCallbackInput } from "@/lib/scans/callback-schema";
 import { SIGNATURE_HEADER, verifySignature } from "@/lib/scans/signing";
+import { logAudit, getClientIp } from "@/lib/audit/audit";
 
 export const runtime = "nodejs";
 
@@ -69,6 +70,16 @@ export async function POST(req: Request) {
             : Prisma.DbNull,
       },
     });
+
+    // Audit: scan completed/failed
+    void logAudit({
+      action: "SCAN_COMPLETED",
+      targetType: "ScanJob",
+      targetId: scanJobId,
+      metadata: { status, failureReason: failureReason ?? null },
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ ok: true, job: updated }, { status: 200 });
   } catch (err) {
     console.error("[callback] update failed:", err);

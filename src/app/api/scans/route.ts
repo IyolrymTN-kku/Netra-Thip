@@ -15,6 +15,7 @@ import { triggerScansAsync } from "@/lib/scans/trigger";
 import { expandTargets } from "@/lib/scans/target-parser";
 import { FileRefSchema } from "@/lib/scans/upload-schema";
 import { assertPathInUserDir } from "@/lib/uploads/storage";
+import { logAudit, getClientIp } from "@/lib/audit/audit";
 
 export const runtime = "nodejs";
 
@@ -183,6 +184,19 @@ export async function POST(req: Request) {
     fileRefs,
     callbackUrl: callbackUrl(req),
   });
+
+  // Audit: log scan creation
+  const clientIp = getClientIp(req);
+  for (const j of jobsToTrigger) {
+    void logAudit({
+      action: "SCAN_CREATED",
+      userId: session.user.id,
+      targetType: "ScanJob",
+      targetId: j.scanJob.id,
+      metadata: { toolName, target: j.target },
+      ipAddress: clientIp,
+    });
+  }
 
   return NextResponse.json({ jobs: jobsToTrigger.map(j => j.scanJob) }, { status: 201 });
 }

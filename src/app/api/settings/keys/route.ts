@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/guards";
 import { encrypt } from "@/lib/security/encryption";
+import { logAudit, getClientIp } from "@/lib/audit/audit";
 
 export const runtime = "nodejs";
 
@@ -76,6 +77,15 @@ export async function POST(req: Request) {
       data: updateMetadata
     });
   }
+
+  // Audit: API key created/updated
+  void logAudit({
+    action: "API_KEY_CREATED",
+    userId: guard.session.user.id,
+    targetType: "ApiKey",
+    metadata: { provider, hasNewKey: !!apiKey },
+    ipAddress: getClientIp(req),
+  });
 
   return NextResponse.json({ success: true });
 }
