@@ -8,13 +8,15 @@
 ## 2. Tech Stack & Infrastructure
 - **Frontend/Backend:** Next.js 15 (App Router), TypeScript, Tailwind CSS v4.
 - **Orchestration:** n8n (Hidden from UI, triggered via Core Engine Webhooks).
-- **Databases:** - **PostgreSQL (Prisma 5):** Relational data (Users, Roles, Projects, Assets, Encrypted API Keys, ScanJobs).
+- **Databases:**
+  - **PostgreSQL (Prisma 5):** Relational data (Users, Roles, Projects, Assets, Encrypted API Keys, ScanJobs).
   - **MongoDB:** Document store for flexible Tool Raw Outputs and standard `NormalizedFinding` data.
 - **Execution Environment:** Docker (Ephemeral containers for tools).
 
 ## 3. Integrated Security Tools (The 7 Pillars)
 The system categorizes tools into 3 Execution Strategies:
-- **Category 1 (CLI Tools via Docker/n8n):** - `AutoPentestX` (End-to-End Pentest, Python CLI)
+- **Category 1 (CLI Tools via Docker/n8n):**
+  - `AutoPentestX` (End-to-End Pentest, Python CLI)
   - `Guardian-cli` (AI-Driven Pentest, Python CLI)
   - `VULS` (Vulnerability Scanner, Go CLI)
 - **Category 2 (REST API Services):**
@@ -26,7 +28,7 @@ The system categorizes tools into 3 Execution Strategies:
 
 ## 4. Strict Enterprise Security Rules (CRITICAL)
 - **Zero Trust Architecture:** All API endpoints must verify User Session and RBAC (Role-Based Access Control).
-- **BYOK (Bring Your Own Key) Encryption:** AI API Keys (OpenAI, Gemini, Codex) provided by users MUST be encrypted using `AES-256-GCM` before storing in PostgreSQL. The `iv` and `authTag` must be stored alongside the encrypted key. 
+- **BYOK (Bring Your Own Key) Encryption:** AI API Keys (OpenAI, Gemini, Codex) provided by users MUST be encrypted using `AES-256-GCM` before storing in PostgreSQL. The `iv` and `authTag` must be stored alongside the encrypted key.
 - **In-Memory Decryption:** Keys are decrypted ONLY in-memory by the Core Engine when passing them as environment variables to Docker/n8n. NEVER expose raw keys to the Frontend or logs.
 
 ## 5. Data Normalization Standard

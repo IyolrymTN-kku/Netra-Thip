@@ -3,12 +3,17 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons/Icon";
-import { TOOLS, type FieldConfig, type ToolDef } from "@/lib/tools/registry";
+import { TOOLS, type ToolDef } from "@/lib/tools/registry";
 import { DynamicForm, type FileMeta, type FormValues } from "./DynamicForm";
 import { ToolCard } from "./ToolCard";
+import {
+  getAiProviderMetadata,
+  type SavedApiKeyConfig,
+} from "@/lib/settings/types";
 
 interface NewScanLauncherProps {
   projectId: string;
+  savedConfigs?: SavedApiKeyConfig[];
 }
 
 type AssetType = "DOMAIN" | "IP" | "URL";
@@ -41,12 +46,6 @@ function pickTargetField(tool: ToolDef): TargetDescriptor | null {
   return null;
 }
 
-function isFileFieldId(tool: ToolDef, fieldId: string): boolean {
-  return tool.fields.some(
-    (f: FieldConfig) => f.id === fieldId && f.type === "file",
-  );
-}
-
 // Build the parameters object that hits POST /api/scans.
 // - Secret fields are passed through to the server, which encrypts them via (Last Version not use fix later)
 //   AES-256-GCM into the ApiKey table and strips them from `parameters` server-side. (Last Version not use fix later)
@@ -59,7 +58,7 @@ function buildParameters(
   fileRefs: Record<string, UploadedFileRef>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  
+
   // วนลูปตาม Field ที่ Tool กำหนดไว้
   for (const field of tool.fields) {
     if (field.type === "file") continue; // File จัดการแยกต่างหากแล้ว
@@ -76,7 +75,7 @@ function buildParameters(
   for (const [fieldId, ref] of Object.entries(fileRefs)) {
     out[fieldId] = ref;
   }
-  
+
   return out;
 }
 
@@ -110,7 +109,7 @@ async function uploadFileFields(
   return refs;
 }
 
-export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
+export function NewScanLauncher({ projectId, savedConfigs = [] }: NewScanLauncherProps) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string>(TOOLS[0].id);
   const [valuesByTool, setValuesByTool] = useState<Record<string, FormValues>>(
@@ -133,9 +132,36 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
     }));
   };
 
+  const configuredFields = useMemo(() => {
+    const configured: Record<string, string> = {};
+    const aiProvider = String(values.ai_provider || "openai");
+    const aiConfig = savedConfigs.find((c) => c.provider === aiProvider);
+    const aiMetadata = getAiProviderMetadata(aiConfig?.metadata);
+
+    for (const f of tool.fields) {
+      if (f.id === "ai_api_key" && aiConfig) {
+        configured[f.id] = "API Key";
+      } else if ((f.id === "model" || f.id === "ai_model") && aiMetadata?.model) {
+        configured[f.id] = aiMetadata.model;
+      } else if ((f.id === "base_url" || f.id === "ai_base_url") && aiMetadata?.baseUrl) {
+        configured[f.id] = aiMetadata.baseUrl;
+      } else if (f.type === "secret" && !["model", "base_url", "ai_model", "ai_base_url"].includes(f.id)) {
+        let provider = "";
+        if (f.id.endsWith("_api_key")) provider = f.id.replace("_api_key", "");
+        else provider = `${tool.id}_${f.id}`;
+
+        const saved = savedConfigs.find((c) => c.provider === provider);
+        if (saved) {
+          configured[f.id] = "API Key";
+        }
+      }
+    }
+    return configured;
+  }, [tool, savedConfigs, values.ai_provider]);
+
   const target = pickTargetField(tool);
   const requiredOk = tool.fields
-    .filter((f) => f.required)
+    .filter((f) => f.required && !configuredFields[f.id])
     .every((f) => {
       const v = values[f.id] ?? ("default" in f ? f.default : undefined);
       return v !== undefined && v !== null && v !== "";
@@ -197,7 +223,7 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
           secrets,    // ส่งเฉพาะ secrets แยกลงกระเป๋าของมันเอง
         }),
       });
-      
+
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as
           | { error?: string }
@@ -376,7 +402,7 @@ export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
           style={{ padding: "22px 24px", overflow: "auto", flex: 1 }}
           key={tool.id + "-form"}
         >
-          <DynamicForm tool={tool} values={values} onChange={setVal} />
+          <DynamicForm tool={tool} values={values} onChange={setVal} configuredFields={configuredFields} />
         </div>
 
         {/* Footer / actions */}

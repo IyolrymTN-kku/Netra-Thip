@@ -79,20 +79,20 @@ export async function POST(
       : findings;
 
     const inserted = await tx.finding.createMany({
-      data: findingsToInsert.map((f) => {
-        return {
-          projectId: scanJob.projectId,
-          scanJobId: scanJob.id,
-          title: f.title,
-          severity: f.severity,
-          description: f.description,
-          remediation: f.remediation,
-          target: f.target,
-          cvss: f.cvss ?? null,
-          cves: f.cves ? (f.cves as Prisma.InputJsonValue) : Prisma.DbNull,
-          status: f.status ?? "OPEN",
-        };
-      }),
+      data: findingsToInsert.map((f) => ({
+        projectId: scanJob.projectId,
+        scanJobId: scanJob.id,
+        title: f.title,
+        severity: f.severity,
+        description: f.description,
+        remediation: f.remediation,
+        target: f.target,
+        cvss: f.cvss ?? null,
+        cves: f.cves
+          ? (f.cves as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+        status: f.status ?? "OPEN",
+      })),
     });
     const updated = acceptsLateVulsTargets
       ? scanJob
