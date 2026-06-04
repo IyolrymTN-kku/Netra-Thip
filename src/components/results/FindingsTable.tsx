@@ -11,6 +11,22 @@ import type { FindingRow } from "./types";
 type SeverityFilter = "ALL" | Severity;
 type StatusFilter = "ALL" | FindingStatus;
 type ToolFilter = "ALL" | string;
+type FindingDisplayEntry =
+  | { kind: "finding"; finding: FindingRow }
+  | {
+      kind: "target";
+      key: string;
+      target: string;
+      toolName: string;
+      findings: FindingRow[];
+      maxSev: Severity;
+    };
+type AssociatedCve = {
+  cveId: string;
+  cvss: number | null | undefined;
+  severity: Severity;
+  description: string;
+};
 
 interface FindingsTableProps {
   rows: FindingRow[];
@@ -24,8 +40,17 @@ const SEVERITY_OPTIONS: SeverityFilter[] = [
   "HIGH",
   "MEDIUM",
   "LOW",
+  "INFO",
 ];
 const STATUS_OPTIONS: StatusFilter[] = ["ALL", "OPEN", "RESOLVED", "IGNORED"];
+const MULTI_TARGET_DROPDOWN_TOOLS = new Set(["sirius", "vuls", "metlo"]);
+const SEVERITY_RANK: Record<Severity, number> = {
+  CRITICAL: 4,
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+  INFO: 0,
+};
 
 function relativeAge(d: Date): string {
   const ms = Date.now() - new Date(d).getTime();
@@ -99,6 +124,7 @@ export function FindingsTable({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [groupByTarget, setGroupByTarget] = useState(false);
   const [expandedTargets, setExpandedTargets] = useState<Set<string>>(new Set());
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
   const toggleExpand = (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); // Prevent row selection when clicking expand
@@ -125,16 +151,19 @@ export function FindingsTable({
     [rows],
   );
 
-  const filtered = useMemo(
-    () =>
-      rows
-        .filter((r) => sevFilter === "ALL" || r.severity === sevFilter)
-        .filter(
-          (r) => toolFilter === "ALL" || r.scanJob.toolName === toolFilter,
-        )
-        .filter((r) => statusFilter === "ALL" || r.status === statusFilter),
-    [rows, sevFilter, toolFilter, statusFilter],
-  );
+  const filtered = useMemo(() => {
+    const result = rows
+      .filter((r) => sevFilter === "ALL" || r.severity === sevFilter)
+      .filter((r) => toolFilter === "ALL" || r.scanJob.toolName === toolFilter)
+      .filter((r) => statusFilter === "ALL" || r.status === statusFilter);
+
+    result.sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime();
+      const timeB = new Date(b.createdAt).getTime();
+      return sortOrder === "desc" ? timeB - timeA : timeA - timeB;
+    });
+    return result;
+  }, [rows, sevFilter, toolFilter, statusFilter, sortOrder]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, FindingRow[]>();
@@ -142,24 +171,90 @@ export function FindingsTable({
       if (!groups.has(r.target)) groups.set(r.target, []);
       groups.get(r.target)!.push(r);
     }
-    const sevOrder = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFO: 0 };
     return Array.from(groups.entries()).map(([target, findings]) => {
       let maxSev: Severity = "INFO";
       let maxScore = -1;
       for (const f of findings) {
-        if (sevOrder[f.severity] > maxScore) {
-          maxScore = sevOrder[f.severity];
+        if (SEVERITY_RANK[f.severity] > maxScore) {
+          maxScore = SEVERITY_RANK[f.severity];
           maxSev = f.severity;
         }
       }
       return { target, findings, maxSev };
-    }).sort((a, b) => sevOrder[b.maxSev] - sevOrder[a.maxSev]);
+    }).sort((a, b) => SEVERITY_RANK[b.maxSev] - SEVERITY_RANK[a.maxSev]);
   }, [filtered]);
+
+  const defaultEntries = useMemo<FindingDisplayEntry[]>(() => {
+    const targetsByScan = new Map<string, Set<string>>();
+
+    for (const r of rows) {
+      const toolName = r.scanJob.toolName.toLowerCase();
+      if (!MULTI_TARGET_DROPDOWN_TOOLS.has(toolName)) continue;
+
+      const scanKey = `${r.scanJobId}:${toolName}`;
+      const targets = targetsByScan.get(scanKey) ?? new Set<string>();
+      targets.add(r.target);
+      targetsByScan.set(scanKey, targets);
+    }
+
+    const groups = new Map<
+      string,
+      Extract<FindingDisplayEntry, { kind: "target" }>
+    >();
+
+    for (const r of filtered) {
+      const toolName = r.scanJob.toolName.toLowerCase();
+      const scanKey = `${r.scanJobId}:${toolName}`;
+      if (
+        !MULTI_TARGET_DROPDOWN_TOOLS.has(toolName) ||
+        (targetsByScan.get(scanKey)?.size ?? 0) < 2
+      ) {
+        continue;
+      }
+
+      const key = `${scanKey}:${r.target}`;
+      const group = groups.get(key) ?? {
+        kind: "target",
+        key,
+        target: r.target,
+        toolName: r.scanJob.toolName,
+        findings: [],
+        maxSev: "INFO",
+      };
+
+      group.findings.push(r);
+      if (SEVERITY_RANK[r.severity] > SEVERITY_RANK[group.maxSev]) {
+        group.maxSev = r.severity;
+      }
+      groups.set(key, group);
+    }
+
+    const emitted = new Set<string>();
+    const entries: FindingDisplayEntry[] = [];
+
+    for (const r of filtered) {
+      const key = `${r.scanJobId}:${r.scanJob.toolName.toLowerCase()}:${r.target}`;
+      const group = groups.get(key);
+
+      if (!group) {
+        entries.push({ kind: "finding", finding: r });
+        continue;
+      }
+      if (emitted.has(key)) {
+        continue;
+      }
+
+      emitted.add(key);
+      entries.push(group);
+    }
+
+    return entries;
+  }, [filtered, rows]);
 
   const renderFindingRow = (r: FindingRow) => {
     const sel = r.id === selectedId;
     const isExpanded = expandedRows.has(r.id);
-    const cves = (r.cves as Array<{ cveId: string; severity: Severity; cvss: number | null; description: string }>) || [];
+    const cves = (r.cves as unknown as AssociatedCve[] | null) ?? [];
     const hasCves = cves.length > 0;
 
     return (
@@ -264,7 +359,7 @@ export function FindingsTable({
                 </div>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--surface-1)", borderRadius: 6, overflow: "hidden", border: "1px solid var(--line)" }}>
                   <tbody>
-                    {cves.map((cve, i: number) => (
+                    {cves.map((cve, i) => (
                       <tr key={i} style={{ borderBottom: i < cves.length - 1 ? "1px solid var(--line)" : "none" }}>
                         <td style={{ padding: "8px 12px", width: "160px" }}>
                           <span style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>{cve.cveId}</span>
@@ -443,10 +538,24 @@ export function FindingsTable({
                   padding: "8px 16px",
                   textAlign: "right",
                   borderBottom: "1px solid var(--line)",
-                  width: 70,
+                  width: 90,
+                  cursor: "pointer",
+                  userSelect: "none",
                 }}
+                onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
               >
-                Age
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                  Age
+                  <Icon
+                    name="chevronDown"
+                    size={12}
+                    style={{
+                      color: "var(--ink-3)",
+                      transform: sortOrder === "asc" ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 0.2s ease"
+                    }}
+                  />
+                </div>
               </th>
             </tr>
           </thead>
@@ -467,7 +576,69 @@ export function FindingsTable({
               </tr>
             )}
             {!groupByTarget ? (
-              filtered.map(renderFindingRow)
+              defaultEntries.map((entry) => {
+                if (entry.kind === "finding") {
+                  return renderFindingRow(entry.finding);
+                }
+
+                const isExpanded = expandedTargets.has(entry.key);
+                return (
+                  <Fragment key={entry.key}>
+                    <tr
+                      onClick={(e) => toggleTarget(e, entry.key)}
+                      style={{
+                        cursor: "pointer",
+                        background: "var(--surface-2)",
+                        borderBottom: "1px solid var(--line)",
+                      }}
+                    >
+                      <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 24,
+                            height: 24,
+                            borderRadius: 4,
+                            background: isExpanded ? "var(--line)" : "transparent",
+                            transition: "transform 0.2s",
+                            transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                          }}
+                        >
+                          <Icon name="chevronRight" size={14} color="var(--ink-3)" />
+                        </div>
+                      </td>
+                      <td style={{ padding: "10px 16px" }}>
+                        <SevBadge severity={entry.maxSev} />
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span
+                          className="mono"
+                          style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}
+                        >
+                          {entry.target}
+                        </span>
+                        <span style={{ marginLeft: 10, fontSize: 11.5, color: "var(--ink-3)" }}>
+                          {entry.findings.length} findings
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "var(--ink-3)" }}>-</td>
+                      <td style={{ padding: "10px 12px", color: "var(--ink-2)" }}>
+                        {entry.toolName}
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>
+                          {entry.target}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "var(--ink-3)" }}>-</td>
+                      <td style={{ padding: "10px 16px" }} />
+                    </tr>
+                    {isExpanded && entry.findings.map(renderFindingRow)}
+                  </Fragment>
+                );
+              })
             ) : (
               grouped.map(({ target, findings, maxSev }) => {
                 const isExpanded = expandedTargets.has(target);

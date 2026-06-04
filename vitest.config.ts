@@ -1,7 +1,7 @@
-import { defineConfig } from "vitest/config";
 import path from "node:path";
+import type { ViteUserConfigExport } from "vitest/config";
 
-export default defineConfig({
+const config = {
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
@@ -14,4 +14,6 @@ export default defineConfig({
       "server-only": path.resolve(__dirname, "./src/test/server-only-shim.ts"),
     },
   },
-});
+} satisfies ViteUserConfigExport;
+
+export default config;

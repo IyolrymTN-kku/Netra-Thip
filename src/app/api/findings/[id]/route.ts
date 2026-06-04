@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/guards";
 import { UpdateFindingInput } from "@/lib/findings/update-schema";
+import { logAudit, getClientIp } from "@/lib/audit/audit";
 
 export const runtime = "nodejs";
 
@@ -29,15 +30,27 @@ export async function PATCH(
   // belongs to another user's project.
   const finding = await prisma.finding.findFirst({
     where: { id, project: { userId: session.user.id } },
-    select: { id: true },
+    select: { id: true, status: true },
   });
   if (!finding) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  const oldStatus = finding.status;
+
   const updated = await prisma.finding.update({
     where: { id },
     data: { status: parsed.data.status },
+  });
+
+  // Audit: finding status changed
+  void logAudit({
+    action: "FINDING_STATUS_CHANGED",
+    userId: session.user.id,
+    targetType: "Finding",
+    targetId: id,
+    metadata: { oldStatus, newStatus: parsed.data.status },
+    ipAddress: getClientIp(req),
   });
 
   return NextResponse.json({ finding: updated });

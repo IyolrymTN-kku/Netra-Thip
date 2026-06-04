@@ -41,7 +41,7 @@ export async function POST(
 
   const scanJob = await prisma.scanJob.findUnique({
     where: { id: scanJobId },
-    select: { id: true, projectId: true, status: true },
+    select: { id: true, projectId: true, toolName: true, status: true },
   });
   if (!scanJob) {
     return NextResponse.json(
@@ -49,18 +49,37 @@ export async function POST(
       { status: 404 },
     );
   }
-  if (TERMINAL.has(scanJob.status)) {
+  const acceptsLateVulsTargets =
+    scanJob.status === JobStatus.COMPLETED &&
+    scanJob.toolName.toLowerCase() === "vuls";
+  if (TERMINAL.has(scanJob.status) && !acceptsLateVulsTargets) {
     return NextResponse.json(
       { error: `job already ${scanJob.status}` },
       { status: 409 },
     );
   }
 
-  // Atomic: bulk-insert findings + flip status. Either both land or neither —
-  // critical for replay protection if n8n retries.
+  // Initial deliveries complete the job. A later Vuls delivery may append a
+  // previously missing target without duplicating targets already persisted.
   const result = await prisma.$transaction(async (tx) => {
+    const existingTargets = acceptsLateVulsTargets
+      ? new Set(
+          (
+            await tx.finding.findMany({
+              where: { scanJobId: scanJob.id },
+              distinct: ["target"],
+              select: { target: true },
+            })
+          ).map((finding) => finding.target),
+        )
+      : new Set<string>();
+
+    const findingsToInsert = acceptsLateVulsTargets
+      ? findings.filter((finding) => !existingTargets.has(finding.target))
+      : findings;
+
     const inserted = await tx.finding.createMany({
-      data: findings.map((f) => ({
+      data: findingsToInsert.map((f) => ({
         projectId: scanJob.projectId,
         scanJobId: scanJob.id,
         title: f.title,
@@ -69,15 +88,24 @@ export async function POST(
         remediation: f.remediation,
         target: f.target,
         cvss: f.cvss ?? null,
-        cves: f.cves ? ((f.cves as unknown) as Prisma.InputJsonValue) : Prisma.JsonNull,
+        cves: f.cves
+          ? (f.cves as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
         status: f.status ?? "OPEN",
       })),
     });
-    const updated = await tx.scanJob.update({
-      where: { id: scanJob.id },
-      data: { status: JobStatus.COMPLETED, completedAt: new Date() },
-    });
-    return { inserted: inserted.count, scanJob: updated };
+    const updated = acceptsLateVulsTargets
+      ? scanJob
+      : await tx.scanJob.update({
+          where: { id: scanJob.id },
+          data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+        });
+
+    return {
+      inserted: inserted.count,
+      skipped: findings.length - findingsToInsert.length,
+      scanJob: updated,
+    };
   });
 
   return NextResponse.json(result, { status: 201 });
