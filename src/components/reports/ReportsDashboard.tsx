@@ -9,6 +9,7 @@ import { TopTargetsTable } from "./TopTargetsTable";
 import { PdfReportTemplate } from "./PdfReportTemplate";
 import { PdfToolReport } from "./PdfToolReport";
 import type { ReportExportData, ReportsSummaryData } from "./types";
+import { PDF_PAGE_WIDTH_PX, PDF_PAGE_HEIGHT_PX } from "./pdfLayout";
 
 function formatPdfToolName(toolName: string): string {
   return toolName.trim().replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "") || "scan";
@@ -90,6 +91,29 @@ function addCanvasToPdf(
   return false;
 }
 
+function addA4CanvasPageToPdf(
+  pdf: JsPdfLike,
+  canvas: HTMLCanvasElement,
+  pageWidthMm: number,
+  pageHeightMm: number,
+  startsNewPdf: boolean,
+): boolean {
+  if (!startsNewPdf) pdf.addPage();
+
+  pdf.addImage(
+    canvas.toDataURL("image/png"),
+    "PNG",
+    0,
+    0,
+    pageWidthMm,
+    pageHeightMm,
+    undefined,
+    "FAST",
+  );
+
+  return false;
+}
+
 async function exportReportPdf(source: HTMLElement, filename: string): Promise<void> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import("html2canvas"),
@@ -108,6 +132,7 @@ async function exportReportPdf(source: HTMLElement, filename: string): Promise<v
   const pageHeightMm = pdf.internal.pageSize.getHeight();
   const pdfPages = Array.from(source.querySelectorAll<HTMLElement>(PDF_PAGE_SELECTOR));
   const renderTargets = pdfPages.length > 0 ? pdfPages : [source];
+  const usesPreparedA4Pages = pdfPages.length > 0;
 
   let startsNewPdf = true;
   for (const target of renderTargets) {
@@ -116,11 +141,15 @@ async function exportReportPdf(source: HTMLElement, filename: string): Promise<v
       useCORS: true,
       scrollY: 0,
       backgroundColor: "#FFFFFF",
-      windowWidth: Math.max(source.scrollWidth, target.scrollWidth, 794),
+      windowWidth: Math.max(source.scrollWidth, target.scrollWidth, PDF_PAGE_WIDTH_PX),
+      windowHeight: Math.max(target.scrollHeight, PDF_PAGE_HEIGHT_PX),
+      ...(usesPreparedA4Pages ? { width: PDF_PAGE_WIDTH_PX, height: PDF_PAGE_HEIGHT_PX } : {}),
       logging: false,
     });
 
-    startsNewPdf = addCanvasToPdf(pdf, canvas, pageWidthMm, pageHeightMm, startsNewPdf);
+    startsNewPdf = usesPreparedA4Pages
+      ? addA4CanvasPageToPdf(pdf, canvas, pageWidthMm, pageHeightMm, startsNewPdf)
+      : addCanvasToPdf(pdf, canvas, pageWidthMm, pageHeightMm, startsNewPdf);
   }
 
   pdf.save(filename);

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { forwardRef } from "react";
-import { SEVERITY_KEYS, type ReportExportData } from "./types";
+import { PDF_PAGE_HEIGHT_PX, PDF_PAGE_WIDTH_PX } from "./pdfLayout";
+import { SEVERITY_KEYS, type ReportExportData, type ReportFinding } from "./types";
 
 interface PdfToolReportProps {
   data: ReportExportData;
@@ -121,18 +122,102 @@ function getToolReportProfile(toolName: string): ToolReportProfile {
   return DEFAULT_TOOL_REPORT_PROFILE;
 }
 
-function chunkItems<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
+interface IndexedFinding {
+  finding: ReportFinding;
+  index: number;
 }
 
-const DETAILED_FINDINGS_PER_PAGE = 6;
+interface RecommendationItem {
+  finding: ReportFinding;
+  index: number;
+}
+
+const TOOL_PAGE_PADDING_X = 44;
+const TOOL_PAGE_PADDING_Y = 36;
+const TOOL_PAGE_CONTENT_HEIGHT = PDF_PAGE_HEIGHT_PX - TOOL_PAGE_PADDING_Y * 2;
+const SECTION_HEADING_HEIGHT = 78;
+const PAGE_BOTTOM_BUFFER = 36;
+const VULNERABILITY_TABLE_HEADER_HEIGHT = 44;
+const VULNERABILITY_TABLE_AVAILABLE_HEIGHT =
+  TOOL_PAGE_CONTENT_HEIGHT - SECTION_HEADING_HEIGHT - VULNERABILITY_TABLE_HEADER_HEIGHT - PAGE_BOTTOM_BUFFER;
+const DETAILED_FINDINGS_AVAILABLE_HEIGHT =
+  TOOL_PAGE_CONTENT_HEIGHT - SECTION_HEADING_HEIGHT - PAGE_BOTTOM_BUFFER;
+const RECOMMENDATIONS_AVAILABLE_HEIGHT =
+  TOOL_PAGE_CONTENT_HEIGHT - SECTION_HEADING_HEIGHT - 86 - PAGE_BOTTOM_BUFFER;
+const MAX_DETAILED_FINDINGS_PER_PAGE = 3;
+const MAX_RECOMMENDATIONS_PER_PAGE = 8;
+
+function estimateLineCount(text: string | null | undefined, charsPerLine: number): number {
+  const value = (text || "").trim();
+  if (!value) return 1;
+
+  return value
+    .split(/\r?\n/)
+    .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+}
+
+function chunkByEstimatedHeight<T>(
+  items: T[],
+  maxHeight: number,
+  estimateHeight: (item: T) => number,
+  maxItemsPerPage?: number,
+): T[][] {
+  const pages: T[][] = [];
+  let page: T[] = [];
+  let pageHeight = 0;
+
+  for (const item of items) {
+    const itemHeight = estimateHeight(item);
+    const exceedsHeight = page.length > 0 && pageHeight + itemHeight > maxHeight;
+    const exceedsCount = Boolean(maxItemsPerPage && page.length >= maxItemsPerPage);
+
+    if (exceedsHeight || exceedsCount) {
+      pages.push(page);
+      page = [];
+      pageHeight = 0;
+    }
+
+    page.push(item);
+    pageHeight += itemHeight;
+  }
+
+  if (page.length > 0) pages.push(page);
+  return pages;
+}
+
+function estimateVulnerabilityRowHeight({ finding }: IndexedFinding): number {
+  const titleLines = estimateLineCount(finding.title, 42);
+  const targetLines = estimateLineCount(finding.target, 24);
+  return 38 + (Math.max(titleLines, targetLines) - 1) * 16;
+}
+
+function estimateDetailedFindingHeight({ finding }: IndexedFinding): number {
+  const cves = formatCves(finding.cves);
+  const cveHeight = cves ? estimateLineCount(cves, 74) * 16 : 0;
+
+  return (
+    154 +
+    estimateLineCount(finding.title, 58) * 18 +
+    cveHeight +
+    estimateLineCount(finding.description || "No description provided.", 84) * 20 +
+    estimateLineCount(finding.remediation || "No remediation guidance provided.", 84) * 20
+  );
+}
+
+function estimateRecommendationHeight({ finding }: RecommendationItem): number {
+  const firstLine = (finding.remediation || "Review and remediate.").split("\n")[0].slice(0, 180);
+
+  return (
+    46 +
+    estimateLineCount(finding.title, 68) * 17 +
+    estimateLineCount(firstLine, 84) * 18
+  );
+}
 
 // ── Styles ──
 const S = {
   page: {
-    width: "794px",
+    width: `${PDF_PAGE_WIDTH_PX}px`,
     backgroundColor: "#FFFFFF",
     color: "#0A1628",
     fontFamily: "'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif",
@@ -141,8 +226,18 @@ const S = {
     padding: "0",
     boxSizing: "border-box" as const,
   },
-  section: { padding: "36px 44px", pageBreakBefore: "always" as const },
-  firstSection: { padding: "36px 44px" },
+  section: {
+    width: `${PDF_PAGE_WIDTH_PX}px`,
+    height: `${PDF_PAGE_HEIGHT_PX}px`,
+    minHeight: `${PDF_PAGE_HEIGHT_PX}px`,
+    maxHeight: `${PDF_PAGE_HEIGHT_PX}px`,
+    padding: `${TOOL_PAGE_PADDING_Y}px ${TOOL_PAGE_PADDING_X}px`,
+    pageBreakBefore: "always" as const,
+    backgroundColor: "#FFFFFF",
+    boxSizing: "border-box" as const,
+    overflow: "hidden" as const,
+  },
+  firstSection: { padding: `${TOOL_PAGE_PADDING_Y}px ${TOOL_PAGE_PADDING_X}px` },
   h2: {
     fontSize: "22px",
     fontWeight: 800,
@@ -154,9 +249,24 @@ const S = {
     letterSpacing: "1px",
   },
   h3: { fontSize: "16px", fontWeight: 700, marginBottom: "12px", marginTop: "24px" },
-  table: { width: "100%", borderCollapse: "collapse" as const, fontSize: "12px", marginBottom: "20px" },
+  table: { width: "100%", borderCollapse: "collapse" as const, tableLayout: "fixed" as const, fontSize: "12px", marginBottom: "20px" },
   th: { padding: "10px 12px", textAlign: "left" as const, backgroundColor: "#F1F5F9", borderBottom: "2px solid #CBD5E1", fontWeight: 700, fontSize: "11px", textTransform: "uppercase" as const, letterSpacing: "0.5px", color: "#475569" },
-  td: { padding: "9px 12px", borderBottom: "1px solid #E5E9F0", verticalAlign: "top" as const },
+  td: { padding: "9px 12px", borderBottom: "1px solid #E5E9F0", verticalAlign: "top" as const, wordBreak: "break-word" as const },
+  numberTh: {
+    padding: "10px 10px",
+    width: "44px",
+    minWidth: "44px",
+    whiteSpace: "nowrap" as const,
+    wordBreak: "normal" as const,
+  },
+  numberTd: {
+    padding: "9px 10px",
+    width: "44px",
+    minWidth: "44px",
+    whiteSpace: "nowrap" as const,
+    wordBreak: "normal" as const,
+    overflowWrap: "normal" as const,
+  },
   badge: (sev: string) => ({
     display: "inline-block",
     backgroundColor: SEV_COLORS[sev]?.bg || "#64748B",
@@ -187,8 +297,32 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
     const targetList = targets.join(", ") || "N/A";
     const targetSubject = targets.length > 1 ? reportProfile.targetPlural : reportProfile.targetSingular;
     const targetScope = targets.length > 1 ? "assessed scope" : reportProfile.targetSingular;
+    const indexedFindings = findings.map((finding, index) => ({ finding, index }));
+    const vulnerabilityPages = findings.length > 0
+      ? chunkByEstimatedHeight(
+          indexedFindings,
+          VULNERABILITY_TABLE_AVAILABLE_HEIGHT,
+          estimateVulnerabilityRowHeight,
+        )
+      : [];
     const detailedFindingPages = findings.length > 0
-      ? chunkItems(findings, DETAILED_FINDINGS_PER_PAGE)
+      ? chunkByEstimatedHeight(
+          indexedFindings,
+          DETAILED_FINDINGS_AVAILABLE_HEIGHT,
+          estimateDetailedFindingHeight,
+          MAX_DETAILED_FINDINGS_PER_PAGE,
+        )
+      : [];
+    const recommendationItems = SEVERITY_KEYS
+      .filter((sev) => sev !== "INFO")
+      .flatMap((sev) => indexedFindings.filter(({ finding }) => finding.severity === sev && finding.status !== "RESOLVED"));
+    const recommendationPages = recommendationItems.length > 0
+      ? chunkByEstimatedHeight(
+          recommendationItems,
+          RECOMMENDATIONS_AVAILABLE_HEIGHT,
+          estimateRecommendationHeight,
+          MAX_RECOMMENDATIONS_PER_PAGE,
+        )
       : [];
 
     return (
@@ -196,7 +330,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
 
         {/* ════════════ PAGE 1: COVER ════════════ */}
         <div data-pdf-page="true" style={{
-          height: "1080px",
+          ...S.section,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -351,7 +485,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
             <table style={S.table}>
               <thead>
                 <tr>
-                  <th style={{ ...S.th, width: "30px" }}>#</th>
+                  <th style={{ ...S.th, ...S.numberTh }}>#</th>
                   <th style={S.th}>Vulnerability</th>
                   <th style={{ ...S.th, width: "90px" }}>Severity</th>
                   <th style={S.th}>Target</th>
@@ -359,9 +493,9 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
                 </tr>
               </thead>
               <tbody>
-                {findings.map((f, i) => (
+                {(vulnerabilityPages[0] ?? []).map(({ finding: f, index }) => (
                   <tr key={f.id}>
-                    <td style={{ ...S.td, color: "#94A3B8" }}>{i + 1}</td>
+                    <td style={{ ...S.td, ...S.numberTd, color: "#94A3B8" }}>{index + 1}</td>
                     <td style={{ ...S.td, fontWeight: 600 }}>{f.title}</td>
                     <td style={S.td}><span style={S.badge(f.severity)}>{f.severity}</span></td>
                     <td style={{ ...S.td, fontFamily: "monospace", fontSize: "11px" }}>{f.target}</td>
@@ -374,14 +508,47 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
         </div>
 
         {/* ════════════ PAGE 4+: DETAILED FINDINGS ════════════ */}
+        {vulnerabilityPages.slice(1).map((pageFindings, pageOffset) => {
+          const pageIndex = pageOffset + 1;
+
+          return (
+            <div key={`vulnerability-page-${pageIndex}`} data-pdf-page="true" style={S.section}>
+              <h2 style={S.h2}>Vulnerabilities Identified (Continued)</h2>
+
+              <table style={S.table}>
+                <thead>
+                  <tr>
+                    <th style={{ ...S.th, ...S.numberTh }}>#</th>
+                    <th style={S.th}>Vulnerability</th>
+                    <th style={{ ...S.th, width: "90px" }}>Severity</th>
+                    <th style={S.th}>Target</th>
+                    <th style={{ ...S.th, width: "50px", textAlign: "right" }}>CVSS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageFindings.map(({ finding: f, index }) => (
+                    <tr key={f.id}>
+                      <td style={{ ...S.td, ...S.numberTd, color: "#94A3B8" }}>{index + 1}</td>
+                      <td style={{ ...S.td, fontWeight: 600 }}>{f.title}</td>
+                      <td style={S.td}><span style={S.badge(f.severity)}>{f.severity}</span></td>
+                      <td style={{ ...S.td, fontFamily: "monospace", fontSize: "11px" }}>{f.target}</td>
+                      <td style={{ ...S.td, textAlign: "right", fontWeight: 700 }}>{f.cvss ?? "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+
         {detailedFindingPages.map((pageFindings, pageIndex) => (
           <div key={`finding-page-${pageIndex}`} data-pdf-page="true" style={S.section}>
             <h2 style={S.h2}>
               Detailed Findings{pageIndex > 0 ? " (Continued)" : ""}
             </h2>
 
-            {pageFindings.map((f, index) => {
-              const findingIndex = pageIndex * DETAILED_FINDINGS_PER_PAGE + index;
+            {pageFindings.map(({ finding: f, index }) => {
+              const findingIndex = index;
 
               return (
                 <div key={f.id} style={{
@@ -487,33 +654,45 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
         </div>
 
         {/* ════════════ PAGE: RECOMMENDATIONS ════════════ */}
-        <div data-pdf-page="true" style={S.section}>
-          <h2 style={S.h2}>Security Recommendations</h2>
+        {(recommendationPages.length > 0 ? recommendationPages : [[]]).map((pageItems, pageIndex) => (
+          <div key={`recommendation-page-${pageIndex}`} data-pdf-page="true" style={S.section}>
+            <h2 style={S.h2}>
+              Security Recommendations{pageIndex > 0 ? " (Continued)" : ""}
+            </h2>
 
-          <p>
-            Based on the identified vulnerabilities and risk assessment, the following remediation actions are
-            recommended to improve the security posture of the {reportProfile.recommendationSubject}:
-          </p>
+            <p>
+              Based on the identified vulnerabilities and risk assessment, the following remediation actions are
+              recommended to improve the security posture of the {reportProfile.recommendationSubject}:
+            </p>
 
-          {SEVERITY_KEYS.filter((sev) => sev !== "INFO").map((sev) => {
-            const sevFindings = findings.filter((f) => f.severity === sev && f.status !== "RESOLVED");
-            if (sevFindings.length === 0) return null;
-            return (
-              <div key={sev} style={{ marginBottom: "20px" }}>
-                <h3 style={{ ...S.h3, marginTop: "16px" }}>
-                  <span style={S.badge(sev)}>{sev}</span> Priority
-                </h3>
-                <ul style={{ paddingLeft: "20px", fontSize: "12px" }}>
-                  {sevFindings.map((f, i) => (
-                    <li key={i} style={{ marginBottom: "8px" }}>
-                      <strong>{f.title}</strong> — {f.remediation ? f.remediation.split("\n")[0].slice(0, 150) : "Review and remediate."}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
+            {pageItems.length === 0 ? (
+              <p>No open remediation recommendations are currently required.</p>
+            ) : (
+              pageItems.map(({ finding: f, index }) => (
+                <div
+                  key={`recommendation-${f.id}`}
+                  style={{
+                    padding: "12px 14px",
+                    marginBottom: "12px",
+                    border: "1px solid #E5E9F0",
+                    borderRadius: "6px",
+                    backgroundColor: "#F8FAFC",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "6px" }}>
+                    <span style={S.badge(f.severity)}>{f.severity}</span>
+                    <strong style={{ fontSize: "12px", lineHeight: "1.5" }}>
+                      {index + 1}. {f.title}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#334155", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
+                    {f.remediation ? f.remediation.split("\n")[0].slice(0, 180) : "Review and remediate."}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ))}
 
         {/* ════════════ PAGE: CONCLUSION ════════════ */}
         <div data-pdf-page="true" style={S.section}>

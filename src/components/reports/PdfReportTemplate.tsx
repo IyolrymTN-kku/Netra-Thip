@@ -2,6 +2,7 @@
 
 import React, { forwardRef } from "react";
 import type { Severity } from "@prisma/client";
+import { PDF_PAGE_HEIGHT_PX, PDF_PAGE_WIDTH_PX } from "./pdfLayout";
 import { SEVERITY_KEYS, type ReportExportData } from "./types";
 
 interface PdfReportTemplateProps {
@@ -22,12 +23,16 @@ function chunkItems<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-const OVERVIEW_FINDINGS_PER_PAGE = 6;
+const OVERVIEW_FINDINGS_PER_PAGE = 3;
 const OVERVIEW_PAGE_STYLE = {
-  marginLeft: "-40px",
+  width: `${PDF_PAGE_WIDTH_PX}px`,
+  height: `${PDF_PAGE_HEIGHT_PX}px`,
+  minHeight: `${PDF_PAGE_HEIGHT_PX}px`,
+  maxHeight: `${PDF_PAGE_HEIGHT_PX}px`,
   padding: "40px",
-  width: "794px",
+  backgroundColor: "#FFFFFF",
   boxSizing: "border-box" as const,
+  overflow: "hidden" as const,
 };
 
 export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplateProps>(
@@ -42,18 +47,18 @@ export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplatePro
       <div
         ref={ref}
         style={{
-          width: "794px", // A4 width at 96 DPI
+          width: `${PDF_PAGE_WIDTH_PX}px`,
           backgroundColor: "#FFFFFF",
           color: "#0A1628",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
           fontSize: "14px",
           lineHeight: 1.6,
-          padding: "40px",
+          padding: "0",
           boxSizing: "border-box"
         }}
       >
         {/* --- PAGE 1: COVER PAGE --- */}
-        <div data-pdf-page="true" style={{ ...OVERVIEW_PAGE_STYLE, height: "1050px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
+        <div data-pdf-page="true" style={{ ...OVERVIEW_PAGE_STYLE, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
           <h1 style={{ fontSize: "48px", fontWeight: 800, color: "#0066FF", margin: "0 0 20px 0" }}>Netra-Thip</h1>
           <h2 style={{ fontSize: "32px", fontWeight: 700, margin: "0 0 40px 0" }}>Security Assessment Report</h2>
 
