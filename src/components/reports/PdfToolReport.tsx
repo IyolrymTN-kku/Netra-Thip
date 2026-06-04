@@ -121,6 +121,14 @@ function getToolReportProfile(toolName: string): ToolReportProfile {
   return DEFAULT_TOOL_REPORT_PROFILE;
 }
 
+function chunkItems<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+const DETAILED_FINDINGS_PER_PAGE = 6;
+
 // ── Styles ──
 const S = {
   page: {
@@ -179,12 +187,15 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
     const targetList = targets.join(", ") || "N/A";
     const targetSubject = targets.length > 1 ? reportProfile.targetPlural : reportProfile.targetSingular;
     const targetScope = targets.length > 1 ? "assessed scope" : reportProfile.targetSingular;
+    const detailedFindingPages = findings.length > 0
+      ? chunkItems(findings, DETAILED_FINDINGS_PER_PAGE)
+      : [];
 
     return (
       <div ref={ref} style={S.page}>
 
         {/* ════════════ PAGE 1: COVER ════════════ */}
-        <div style={{
+        <div data-pdf-page="true" style={{
           height: "1080px",
           display: "flex",
           flexDirection: "column",
@@ -243,7 +254,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
         </div>
 
         {/* ════════════ PAGE 2: EXECUTIVE SUMMARY ════════════ */}
-        <div style={S.section}>
+        <div data-pdf-page="true" style={S.section}>
           <h2 style={S.h2}>Executive Summary</h2>
 
           <p>
@@ -331,7 +342,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
         </div>
 
         {/* ════════════ PAGE 3: VULNERABILITIES TABLE ════════════ */}
-        <div style={S.section}>
+        <div data-pdf-page="true" style={S.section}>
           <h2 style={S.h2}>Vulnerabilities Identified</h2>
 
           {findings.length === 0 ? (
@@ -363,62 +374,70 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
         </div>
 
         {/* ════════════ PAGE 4+: DETAILED FINDINGS ════════════ */}
-        <div style={S.section}>
-          <h2 style={S.h2}>Detailed Findings</h2>
+        {detailedFindingPages.map((pageFindings, pageIndex) => (
+          <div key={`finding-page-${pageIndex}`} data-pdf-page="true" style={S.section}>
+            <h2 style={S.h2}>
+              Detailed Findings{pageIndex > 0 ? " (Continued)" : ""}
+            </h2>
 
-          {findings.map((f, index) => (
-            <div key={f.id} style={{
-              marginBottom: "28px",
-              border: "1px solid #D9DEE8",
-              borderRadius: "8px",
-              breakInside: "auto",
-              pageBreakInside: "auto",
-              overflow: "visible",
-            }}>
-              {/* Finding header */}
-              <div style={{
-                padding: "14px 18px",
-                backgroundColor: "#F1F5F9",
-                borderBottom: "1px solid #D9DEE8",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}>
-                <span style={{ fontWeight: 800, fontSize: "14px" }}>
-                  {index + 1}. {f.title}
-                </span>
-                <span style={S.badge(f.severity)}>{f.severity}</span>
-              </div>
+            {pageFindings.map((f, index) => {
+              const findingIndex = pageIndex * DETAILED_FINDINGS_PER_PAGE + index;
 
-              {/* Finding body */}
-              <div style={{ padding: "18px" }}>
-                <table style={{ ...S.table, marginBottom: "14px", fontSize: "12px" }}>
-                  <tbody>
-                    <tr><td style={{ width: "100px", fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Target:</td><td style={{ padding: "4px 0", fontFamily: "monospace" }}>{f.target}</td></tr>
-                    <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVSS:</td><td style={{ padding: "4px 0" }}>{f.cvss ?? "N/A"}</td></tr>
-                    <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Status:</td><td style={{ padding: "4px 0" }}>{f.status}</td></tr>
-                    {formatCves(f.cves) && (
-                      <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVEs:</td><td style={{ padding: "4px 0", fontFamily: "monospace", fontSize: "11px" }}>{formatCves(f.cves)}</td></tr>
-                    )}
-                  </tbody>
-                </table>
+              return (
+                <div key={f.id} style={{
+                  marginBottom: "28px",
+                  border: "1px solid #D9DEE8",
+                  borderRadius: "8px",
+                  breakInside: "auto",
+                  pageBreakInside: "auto",
+                  overflow: "visible",
+                }}>
+                  {/* Finding header */}
+                  <div style={{
+                    padding: "14px 18px",
+                    backgroundColor: "#F1F5F9",
+                    borderBottom: "1px solid #D9DEE8",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}>
+                    <span style={{ fontWeight: 800, fontSize: "14px" }}>
+                      {findingIndex + 1}. {f.title}
+                    </span>
+                    <span style={S.badge(f.severity)}>{f.severity}</span>
+                  </div>
 
-                <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#0066FF", margin: "12px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Description</h4>
-                <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
-                  {f.description || "No description provided."}
+                  {/* Finding body */}
+                  <div style={{ padding: "18px" }}>
+                    <table style={{ ...S.table, marginBottom: "14px", fontSize: "12px" }}>
+                      <tbody>
+                        <tr><td style={{ width: "100px", fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Target:</td><td style={{ padding: "4px 0", fontFamily: "monospace" }}>{f.target}</td></tr>
+                        <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVSS:</td><td style={{ padding: "4px 0" }}>{f.cvss ?? "N/A"}</td></tr>
+                        <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Status:</td><td style={{ padding: "4px 0" }}>{f.status}</td></tr>
+                        {formatCves(f.cves) && (
+                          <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVEs:</td><td style={{ padding: "4px 0", fontFamily: "monospace", fontSize: "11px" }}>{formatCves(f.cves)}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+
+                    <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#0066FF", margin: "12px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Description</h4>
+                    <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
+                      {f.description || "No description provided."}
+                    </div>
+
+                    <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#10B981", margin: "14px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remediation</h4>
+                    <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
+                      {f.remediation || "No remediation guidance provided."}
+                    </div>
+                  </div>
                 </div>
-
-                <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#10B981", margin: "14px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remediation</h4>
-                <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
-                  {f.remediation || "No remediation guidance provided."}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        ))}
 
         {/* ════════════ PAGE: RISK ASSESSMENT ════════════ */}
-        <div style={S.section}>
+        <div data-pdf-page="true" style={S.section}>
           <h2 style={S.h2}>Risk Assessment</h2>
 
           <p>
@@ -468,7 +487,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
         </div>
 
         {/* ════════════ PAGE: RECOMMENDATIONS ════════════ */}
-        <div style={S.section}>
+        <div data-pdf-page="true" style={S.section}>
           <h2 style={S.h2}>Security Recommendations</h2>
 
           <p>
@@ -497,7 +516,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
         </div>
 
         {/* ════════════ PAGE: CONCLUSION ════════════ */}
-        <div style={S.section}>
+        <div data-pdf-page="true" style={S.section}>
           <h2 style={S.h2}>Conclusion</h2>
 
           <p>

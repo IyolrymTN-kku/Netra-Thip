@@ -16,10 +16,27 @@ const SEV_COLORS: Record<Severity, { bg: string, text: string }> = {
   INFO:     { bg: "#64748B", text: "#FFF" },
 };
 
+function chunkItems<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+const OVERVIEW_FINDINGS_PER_PAGE = 6;
+const OVERVIEW_PAGE_STYLE = {
+  marginLeft: "-40px",
+  padding: "40px",
+  width: "794px",
+  boxSizing: "border-box" as const,
+};
+
 export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplateProps>(
   ({ data }, ref) => {
     const { project, assets, findings, kpi, compliance, topTargets } = data;
     const reportDate = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    const detailedFindingPages = findings.length > 0
+      ? chunkItems(findings, OVERVIEW_FINDINGS_PER_PAGE)
+      : [];
 
     return (
       <div
@@ -36,7 +53,7 @@ export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplatePro
         }}
       >
         {/* --- PAGE 1: COVER PAGE --- */}
-        <div style={{ height: "1050px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
+        <div data-pdf-page="true" style={{ ...OVERVIEW_PAGE_STYLE, height: "1050px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
           <h1 style={{ fontSize: "48px", fontWeight: 800, color: "#0066FF", margin: "0 0 20px 0" }}>Netra-Thip</h1>
           <h2 style={{ fontSize: "32px", fontWeight: 700, margin: "0 0 40px 0" }}>Security Assessment Report</h2>
 
@@ -57,7 +74,7 @@ export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplatePro
         </div>
 
         {/* --- PAGE 2: EXECUTIVE SUMMARY --- */}
-        <div style={{ pageBreakBefore: "always", paddingTop: "20px" }}>
+        <div data-pdf-page="true" style={{ ...OVERVIEW_PAGE_STYLE, pageBreakBefore: "always", paddingTop: "60px" }}>
           <h2 style={{ fontSize: "28px", borderBottom: "2px solid #0066FF", paddingBottom: "10px", marginBottom: "20px" }}>
             1. Executive Summary
           </h2>
@@ -120,80 +137,91 @@ export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplatePro
         </div>
 
         {/* --- PAGE 3: DETAILED FINDINGS --- */}
-        <div style={{ pageBreakBefore: "always", paddingTop: "20px" }}>
-          <h2 style={{ fontSize: "28px", borderBottom: "2px solid #0066FF", paddingBottom: "10px", marginBottom: "20px" }}>
-            2. Detailed Findings
-          </h2>
-
-          {findings.length === 0 ? (
+        {findings.length === 0 ? (
+          <div data-pdf-page="true" style={{ ...OVERVIEW_PAGE_STYLE, pageBreakBefore: "always", paddingTop: "60px" }}>
+            <h2 style={{ fontSize: "28px", borderBottom: "2px solid #0066FF", paddingBottom: "10px", marginBottom: "20px" }}>
+              2. Detailed Findings
+            </h2>
             <p>No vulnerabilities found.</p>
-          ) : (
-            findings.map((f, index) => (
-              <div key={f.id} style={{
-                marginBottom: "30px",
-                border: "1px solid #D9DEE8",
-                borderRadius: "8px",
-                pageBreakInside: "avoid"
-              }}>
-                <div style={{
-                  padding: "15px",
-                  backgroundColor: "#F4F6FA",
-                  borderBottom: "1px solid #D9DEE8",
-                  borderTopLeftRadius: "8px",
-                  borderTopRightRadius: "8px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center"
-                }}>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
-                    {index + 1}. {f.title}
-                  </h3>
-                  <span style={{
-                    backgroundColor: SEV_COLORS[f.severity].bg,
-                    color: SEV_COLORS[f.severity].text,
-                    padding: "4px 10px",
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: 700
+          </div>
+        ) : (
+          detailedFindingPages.map((pageFindings, pageIndex) => (
+            <div key={`overview-finding-page-${pageIndex}`} data-pdf-page="true" style={{ ...OVERVIEW_PAGE_STYLE, pageBreakBefore: "always", paddingTop: "60px" }}>
+              <h2 style={{ fontSize: "28px", borderBottom: "2px solid #0066FF", paddingBottom: "10px", marginBottom: "20px" }}>
+                2. Detailed Findings{pageIndex > 0 ? " (Continued)" : ""}
+              </h2>
+
+              {pageFindings.map((f, index) => {
+                const findingIndex = pageIndex * OVERVIEW_FINDINGS_PER_PAGE + index;
+
+                return (
+                  <div key={f.id} style={{
+                    marginBottom: "30px",
+                    border: "1px solid #D9DEE8",
+                    borderRadius: "8px",
+                    pageBreakInside: "auto"
                   }}>
-                    {f.severity}
-                  </span>
-                </div>
-                <div style={{ padding: "20px" }}>
-                  <table style={{ width: "100%", marginBottom: "15px", fontSize: "13px" }}>
-                    <tbody>
-                      <tr>
-                        <td style={{ width: "120px", fontWeight: 600, color: "#5A6478" }}>Target:</td>
-                        <td>{f.target}</td>
-                      </tr>
-                      <tr>
-                        <td style={{ fontWeight: 600, color: "#5A6478" }}>CVSS Score:</td>
-                        <td>{f.cvss || "N/A"}</td>
-                      </tr>
-                      <tr>
-                        <td style={{ fontWeight: 600, color: "#5A6478" }}>Status:</td>
-                        <td>{f.status}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                    <div style={{
+                      padding: "15px",
+                      backgroundColor: "#F4F6FA",
+                      borderBottom: "1px solid #D9DEE8",
+                      borderTopLeftRadius: "8px",
+                      borderTopRightRadius: "8px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
+                        {findingIndex + 1}. {f.title}
+                      </h3>
+                      <span style={{
+                        backgroundColor: SEV_COLORS[f.severity].bg,
+                        color: SEV_COLORS[f.severity].text,
+                        padding: "4px 10px",
+                        borderRadius: "4px",
+                        fontSize: "12px",
+                        fontWeight: 700
+                      }}>
+                        {f.severity}
+                      </span>
+                    </div>
+                    <div style={{ padding: "20px" }}>
+                      <table style={{ width: "100%", marginBottom: "15px", fontSize: "13px" }}>
+                        <tbody>
+                          <tr>
+                            <td style={{ width: "120px", fontWeight: 600, color: "#5A6478" }}>Target:</td>
+                            <td>{f.target}</td>
+                          </tr>
+                          <tr>
+                            <td style={{ fontWeight: 600, color: "#5A6478" }}>CVSS Score:</td>
+                            <td>{f.cvss || "N/A"}</td>
+                          </tr>
+                          <tr>
+                            <td style={{ fontWeight: 600, color: "#5A6478" }}>Status:</td>
+                            <td>{f.status}</td>
+                          </tr>
+                        </tbody>
+                      </table>
 
-                  <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "15px 0 5px 0", color: "#0066FF" }}>Description</h4>
-                  <div style={{ whiteSpace: "pre-wrap", fontSize: "13px", color: "#2A3447", marginBottom: "15px" }}>
-                    {f.description || "No description provided."}
-                  </div>
+                      <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "15px 0 5px 0", color: "#0066FF" }}>Description</h4>
+                      <div style={{ whiteSpace: "pre-wrap", fontSize: "13px", color: "#2A3447", marginBottom: "15px" }}>
+                        {f.description || "No description provided."}
+                      </div>
 
-                  <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "15px 0 5px 0", color: "#10B981" }}>Remediation</h4>
-                  <div style={{ whiteSpace: "pre-wrap", fontSize: "13px", color: "#2A3447" }}>
-                    {f.remediation || "No remediation provided."}
+                      <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "15px 0 5px 0", color: "#10B981" }}>Remediation</h4>
+                      <div style={{ whiteSpace: "pre-wrap", fontSize: "13px", color: "#2A3447" }}>
+                        {f.remediation || "No remediation provided."}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+                );
+              })}
+            </div>
+          ))
+        )}
 
         {/* --- PAGE 4: APPENDIX --- */}
-        <div style={{ pageBreakBefore: "always", paddingTop: "20px" }}>
+        <div data-pdf-page="true" style={{ ...OVERVIEW_PAGE_STYLE, pageBreakBefore: "always", paddingTop: "60px" }}>
           <h2 style={{ fontSize: "28px", borderBottom: "2px solid #0066FF", paddingBottom: "10px", marginBottom: "20px" }}>
             3. Appendix
           </h2>

@@ -14,36 +14,116 @@ function formatPdfToolName(toolName: string): string {
   return toolName.trim().replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "") || "scan";
 }
 
-const PDF_PREFERRED_SCALE = 2;
-const PDF_MAX_CANVAS_DIMENSION = 30000;
-const PDF_MAX_CANVAS_AREA = 240_000_000;
+const PDF_RENDER_SCALE = 2;
+const PDF_PAGE_SELECTOR = "[data-pdf-page='true']";
 
-function getSafePdfScale(source: HTMLElement): number {
-  const width = Math.max(source.scrollWidth, source.offsetWidth, 794);
-  const height = Math.max(source.scrollHeight, source.offsetHeight, 1123);
-  const dimensionScale = PDF_MAX_CANVAS_DIMENSION / Math.max(width, height);
-  const areaScale = Math.sqrt(PDF_MAX_CANVAS_AREA / (width * height));
-  const safeScale = Math.min(PDF_PREFERRED_SCALE, dimensionScale, areaScale);
-
-  return Math.max(0.05, Math.floor(safeScale * 100) / 100);
+interface JsPdfLike {
+  addImage(
+    imageData: string,
+    format: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    alias?: string,
+    compression?: string,
+  ): void;
+  addPage(): void;
+  save(filename: string): void;
+  internal: { pageSize: { getWidth(): number; getHeight(): number } };
 }
 
-function getPdfOptions(filename: string, source: HTMLElement) {
-  return {
-    margin: [10, 0, 10, 0],
-    filename,
-    image: { type: "jpeg", quality: 1 },
-    html2canvas: {
-      scale: getSafePdfScale(source),
+function addCanvasToPdf(
+  pdf: JsPdfLike,
+  canvas: HTMLCanvasElement,
+  pageWidthMm: number,
+  pageHeightMm: number,
+  startsNewPdf: boolean,
+): boolean {
+  const sliceHeightPx = Math.floor((pageHeightMm / pageWidthMm) * canvas.width);
+  let offsetPx = 0;
+  let isFirstSlice = startsNewPdf;
+
+  while (offsetPx < canvas.height) {
+    if (!isFirstSlice) pdf.addPage();
+
+    const currentSliceHeight = Math.min(sliceHeightPx, canvas.height - offsetPx);
+    const sliceCanvas = document.createElement("canvas");
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = currentSliceHeight;
+
+    const ctx = sliceCanvas.getContext("2d");
+    if (!ctx) throw new Error("Unable to render PDF page");
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+    ctx.drawImage(
+      canvas,
+      0,
+      offsetPx,
+      canvas.width,
+      currentSliceHeight,
+      0,
+      0,
+      canvas.width,
+      currentSliceHeight,
+    );
+
+    const imageHeightMm = (currentSliceHeight * pageWidthMm) / canvas.width;
+    pdf.addImage(
+      sliceCanvas.toDataURL("image/png"),
+      "PNG",
+      0,
+      0,
+      pageWidthMm,
+      imageHeightMm,
+      undefined,
+      "FAST",
+    );
+
+    sliceCanvas.width = 0;
+    sliceCanvas.height = 0;
+    offsetPx += currentSliceHeight;
+    isFirstSlice = false;
+  }
+
+  return false;
+}
+
+async function exportReportPdf(source: HTMLElement, filename: string): Promise<void> {
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
+
+  await document.fonts?.ready;
+
+  const pdf: JsPdfLike = new jsPDF({
+    unit: "mm",
+    format: "a4",
+    orientation: "portrait",
+    compress: true,
+  });
+  const pageWidthMm = pdf.internal.pageSize.getWidth();
+  const pageHeightMm = pdf.internal.pageSize.getHeight();
+  const pdfPages = Array.from(source.querySelectorAll<HTMLElement>(PDF_PAGE_SELECTOR));
+  const renderTargets = pdfPages.length > 0 ? pdfPages : [source];
+
+  let startsNewPdf = true;
+  for (const target of renderTargets) {
+    const canvas = await html2canvas(target, {
+      scale: PDF_RENDER_SCALE,
       useCORS: true,
-      letterRendering: true,
       scrollY: 0,
       backgroundColor: "#FFFFFF",
-      windowWidth: Math.max(source.scrollWidth, 794),
-    },
-    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    pagebreak: { mode: ["css", "legacy"] },
-  };
+      windowWidth: Math.max(source.scrollWidth, target.scrollWidth, 794),
+      logging: false,
+    });
+
+    startsNewPdf = addCanvasToPdf(pdf, canvas, pageWidthMm, pageHeightMm, startsNewPdf);
+  }
+
+  pdf.save(filename);
 }
 
 function formatDateShort(d: string | null): string {
@@ -99,13 +179,9 @@ export function ReportsDashboard() {
       const json = (await res.json()) as ReportExportData;
       setFullExportData(json);
       await new Promise((r) => setTimeout(r, 500));
-      const html2pdf = (await import("html2pdf.js")).default;
       if (!overviewRef.current) throw new Error("Container not found");
       const timestamp = new Date().toISOString().slice(0, 10);
-      await html2pdf()
-        .set(getPdfOptions(`Netra-Thip_Overview_Report_${timestamp}.pdf`, overviewRef.current))
-        .from(overviewRef.current)
-        .save();
+      await exportReportPdf(overviewRef.current, `Netra-Thip_Overview_Report_${timestamp}.pdf`);
     } catch (err) {
       console.error("PDF export failed:", err);
     } finally {
@@ -124,14 +200,10 @@ export function ReportsDashboard() {
       const json = (await res.json()) as ReportExportData;
       setToolExportData(json);
       await new Promise((r) => setTimeout(r, 600));
-      const html2pdf = (await import("html2pdf.js")).default;
       if (!toolReportRef.current) throw new Error("Container not found");
       const toolName = formatPdfToolName(json.scanJobInfo?.toolName || "scan");
       const timestamp = new Date().toISOString().slice(0, 10);
-      await html2pdf()
-        .set(getPdfOptions(`Netra-Thip_${toolName}_Report_${timestamp}.pdf`, toolReportRef.current))
-        .from(toolReportRef.current)
-        .save();
+      await exportReportPdf(toolReportRef.current, `Netra-Thip_${toolName}_Report_${timestamp}.pdf`);
     } catch (err) {
       console.error("Tool PDF export failed:", err);
     } finally {
