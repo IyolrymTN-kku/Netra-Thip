@@ -1,0 +1,16 @@
+# Shared runner environment. Copy to /etc/netra/runner.env on the runner host
+# (or source it before invoking a wrapper). NEVER commit a filled-in copy.
+
+# ─── Scope policy (deny-by-default) — reuse the portal's values ───
+# Comma/space separated CIDRs, IPs, and/or domain suffixes that ARE in scope.
+NETRA_SCOPE_ALLOWLIST="10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+# Always-denied entries (win over the allowlist).
+NETRA_SCOPE_DENYLIST=""
+# Max hosts a single scan may expand to (oversized CIDRs rejected before run).
+NETRA_MAX_TARGETS="256"
+# Allow public/globally-routable targets. Keep false for pre-prod.
+NETRA_ALLOW_PUBLIC_TARGETS="false"
+
+# ─── Interpreters ───
+NODE_BIN="node"
+PYTHON_BIN="python3"

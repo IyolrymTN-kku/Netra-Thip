@@ -11,7 +11,12 @@ import {
 } from "@/lib/scans/byok";
 import { decrypt } from "@/lib/security/encryption";
 import { triggerScansAsync } from "@/lib/scans/trigger";
-import { expandTargets } from "@/lib/scans/target-parser";
+import {
+  loadScopePolicy,
+  validateScanTarget,
+  expandTargetsSafe,
+} from "@/lib/scans/scope";
+import { requiresApproval, isApproved } from "@/lib/scans/approval";
 import { FileRefSchema } from "@/lib/scans/upload-schema";
 import { assertPathInUserDir } from "@/lib/uploads/storage";
 import { logAudit, getClientIp } from "@/lib/audit/audit";
@@ -52,6 +57,66 @@ export async function POST(req: Request) {
   const tool = getTool(toolName);
   if (!tool) {
     return NextResponse.json({ error: "unknown tool" }, { status: 400 });
+  }
+
+  // ─── Scope validation (deny by default) ───
+  // Reject out-of-scope / dangerous / oversized targets BEFORE persisting any
+  // secret or creating any ScanJob, and before dispatching to n8n.
+  const scopePolicy = loadScopePolicy();
+  const scope = validateScanTarget(target, scopePolicy);
+  if (!scope.ok) {
+    console.warn(
+      `[scope] rejected scan by ${session.user.email} tool=${toolName} code=${scope.code}: ${scope.reason}`,
+    );
+    void logAudit({
+      action: "SCAN_CREATED",
+      userId: session.user.id,
+      targetType: "ScanJob",
+      metadata: {
+        rejected: true,
+        scopeCode: scope.code,
+        toolName,
+        target,
+      },
+      ipAddress: getClientIp(req),
+    });
+    const status = scope.code === "TOO_MANY_TARGETS" ? 400 : 403;
+    return NextResponse.json(
+      { error: "target rejected by scan scope policy", code: scope.code, reason: scope.reason },
+      { status },
+    );
+  }
+
+  // ─── Approval gate for offensive/deep tools (P0) ───
+  // AutoPentestX always, Guardian offensive/deep workflows. Operator must
+  // explicitly set parameters.approved = true (audited below).
+  const approvalParams = (parameters ?? {}) as Record<string, unknown>;
+  if (requiresApproval(toolName, approvalParams) && !isApproved(approvalParams)) {
+    console.warn(
+      `[approval] blocked scan by ${session.user.email} tool=${toolName} (approval required)`,
+    );
+    void logAudit({
+      action: "SCAN_CREATED",
+      userId: session.user.id,
+      targetType: "ScanJob",
+      metadata: {
+        rejected: true,
+        approvalRequired: true,
+        toolName,
+        target,
+        workflow: approvalParams.workflow_name ?? null,
+      },
+      ipAddress: getClientIp(req),
+    });
+    return NextResponse.json(
+      {
+        error: "approval required for this tool/workflow",
+        code: "APPROVAL_REQUIRED",
+        reason:
+          "This tool runs offensive/deep actions. Set parameters.approved = true to confirm written authorization.",
+      },
+      { status: 403 },
+    );
   }
 
   const params: Record<string, unknown> = parameters ?? {};
@@ -145,10 +210,9 @@ export async function POST(req: Request) {
   }
   for (const [fid, ref] of Object.entries(fileRefs)) sanitised[fid] = ref;
 
-  const parsedTargets = expandTargets(target);
-  if (parsedTargets.length > 256) {
-    return NextResponse.json({ error: "too many targets (max 256)" }, { status: 400 });
-  }
+  // Safe expansion: count is checked arithmetically before any array is built.
+  // validateScanTarget already enforced the cap, so this will not throw here.
+  const parsedTargets = expandTargetsSafe(target, scopePolicy.maxTargets);
 
   for (const t of parsedTargets) {
     await prisma.asset.upsert({

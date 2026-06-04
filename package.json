@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check:n8n": "node scripts/check-n8n-workflow-secrets.mjs orchestration/n8n/workflow.sanitized.json",
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate",
     "prepare": "husky"

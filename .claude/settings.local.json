@@ -3,7 +3,20 @@
     "allow": [
       "Bash(npx prisma *)",
       "PowerShell(npx prisma migrate dev --name scan_flow 2>&1)",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(grep -ivE \"\\(encryptedKey|authTag|encrypt|decrypt|secretIds|extractSecrets|persistSecrets|secretMap|secretsTo|loadSecret|incomingSecrets|bodySecrets|hasNewKey|interface|type |import |//|\\\\* \\)\")",
+      "Bash(git check-ignore *)",
+      "Bash(node -e ' *)",
+      "Bash(npx vitest *)",
+      "Bash(npm run *)",
+      "Bash(command -v shellcheck)",
+      "Bash(shellcheck -s sh runners/*/run-safe.sh)",
+      "Bash(echo \"shellcheck exit=$?\")",
+      "Bash(grep -rnIE \"f48ace3d|metlo\\\\.[A-Za-z0-9+/]{8,}|-----BEGIN\" runners/ orchestration/ src/lib/scans/ src/lib/tools/registry.ts)",
+      "Bash(git add *)",
+      "Bash(node \"C:/Users/nansa/AppData/Local/Temp/migrate-n8n-35.mjs\")",
+      "Bash(node scripts/check-n8n-workflow-secrets.mjs orchestration/n8n/workflow.sanitized.json)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }

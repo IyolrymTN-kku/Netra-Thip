@@ -46,3 +46,30 @@ next-env.d.ts
 
 #n8n-workflow
 Netra-Thip_ Core Engine-lastest-V3.json
+
+# ─── Netra-Thip safety baseline ───
+# Local SSH keys / private keys (never commit runner credentials)
+*.key
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+**/.ssh/
+
+# n8n exported workflows MAY contain live API keys, HMAC secrets, SSH creds.
+# Keep raw exports out of git; only the sanitized reference copy is tracked.
+/n8n-*.json
+*Core Engine*.json
+/orchestration/n8n/*.json
+!/orchestration/n8n/workflow.sanitized.json
+
+# Security-tool reports / logs / scratch — never commit scan output
+/runners/**/reports/
+/runners/**/logs/
+AutopentestX/**/reports/*.json
+AutopentestX/**/logs/*.json
+**/guardian*/**/reports/
+**/guardian*/**/session_*.json
+**/vuls*/**/results/
+**/vuls*/**/tmp/
+*.scan.json

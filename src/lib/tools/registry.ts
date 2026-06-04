@@ -1,7 +1,7 @@
 // Tool registry for the New Scan launcher.
 // Discriminated union on `type` keeps each field's extras statically known.
 
-export type FieldGroup = "Target" | "Auth" | "Engine" | "Input" | "General";
+export type FieldGroup = "Target" | "Auth" | "Engine" | "Input" | "General" | "Authorization";
 
 interface FieldBase {
   id: string;
@@ -96,8 +96,10 @@ export const TOOLS: ToolDef[] = [
     features: ["Exploit Chaining", "AI Orchestration", "Infrastructure"],
     fields: [
       { id: "target_ip", label: "Target IP", type: "ip", placeholder: "192.168.1.1, 10.0.0.0/24", required: true, group: "Target", hint: "Supports single IP, CIDR, Range, Wildcard (*), or Space/Comma separated" },
-      { id: "scan_mode", label: "Scan mode", type: "select", options: ["Stealth", "Balanced", "Aggressive"], default: "Balanced", group: "Engine" },
+      { id: "scan_mode", label: "Scan mode", type: "select", options: ["Stealth", "Balanced", "Aggressive"], default: "Balanced", group: "Engine", hint: "The safe runner always forces non-destructive mode (no exploitation) regardless of this setting." },
       { id: "operator_name", label: "Operator name", type: "text", placeholder: "Aroon S.", group: "Engine" },
+      { id: "approved", label: "I am authorized to test this target", type: "toggle", default: false, required: true, group: "Authorization", hint: "Required. Confirms written authorization for this engagement. AutoPentestX will not run without it." },
+      { id: "approval_ticket", label: "Authorization reference", type: "text", placeholder: "CHG-1234 / ticket URL", group: "Authorization", hint: "Optional: change/ticket reference for the audit trail." },
     ],
   },
   {
@@ -117,7 +119,9 @@ export const TOOLS: ToolDef[] = [
       { id: "ai_provider", label: "AI provider", type: "select", options: ["openai", "gemini", "claude", "openrouter"], default: "openai", required: true,group: "Engine" },
       { id: "ai_api_key", label: "AI API Key", type: "secret", placeholder: "sk-…", group: "Engine", hint: "BYOK · never stored" },
       { id: "model", label: "model", type: "secret", placeholder: "gemini-2.5", group: "Engine", hint: "BYOK · never stored" },
-      { id: "base_url", label: "Base URL", type: "secret", placeholder: "https://gen…", group: "Engine", hint: "BYOK · never stored" }
+      { id: "base_url", label: "Base URL", type: "secret", placeholder: "https://gen…", group: "Engine", hint: "BYOK · never stored" },
+      { id: "approved", label: "I am authorized to test this target", type: "toggle", default: false, group: "Authorization", hint: "Required for offensive/deep workflows (network_pentest, web_pentest, full_vuln_scan, autonomus). Recon-only workflows do not need it." },
+      { id: "approval_ticket", label: "Authorization reference", type: "text", placeholder: "CHG-1234 / ticket URL", group: "Authorization", hint: "Optional: change/ticket reference for the audit trail." },
     ],
   },
   {
