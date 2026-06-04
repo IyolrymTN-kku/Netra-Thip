@@ -10,6 +10,42 @@ import { PdfReportTemplate } from "./PdfReportTemplate";
 import { PdfToolReport } from "./PdfToolReport";
 import type { ReportExportData, ReportsSummaryData } from "./types";
 
+function formatPdfToolName(toolName: string): string {
+  return toolName.trim().replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "") || "scan";
+}
+
+const PDF_PREFERRED_SCALE = 2;
+const PDF_MAX_CANVAS_DIMENSION = 30000;
+const PDF_MAX_CANVAS_AREA = 240_000_000;
+
+function getSafePdfScale(source: HTMLElement): number {
+  const width = Math.max(source.scrollWidth, source.offsetWidth, 794);
+  const height = Math.max(source.scrollHeight, source.offsetHeight, 1123);
+  const dimensionScale = PDF_MAX_CANVAS_DIMENSION / Math.max(width, height);
+  const areaScale = Math.sqrt(PDF_MAX_CANVAS_AREA / (width * height));
+  const safeScale = Math.min(PDF_PREFERRED_SCALE, dimensionScale, areaScale);
+
+  return Math.max(0.05, Math.floor(safeScale * 100) / 100);
+}
+
+function getPdfOptions(filename: string, source: HTMLElement) {
+  return {
+    margin: [10, 0, 10, 0],
+    filename,
+    image: { type: "jpeg", quality: 1 },
+    html2canvas: {
+      scale: getSafePdfScale(source),
+      useCORS: true,
+      letterRendering: true,
+      scrollY: 0,
+      backgroundColor: "#FFFFFF",
+      windowWidth: Math.max(source.scrollWidth, 794),
+    },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    pagebreak: { mode: ["css", "legacy"] },
+  };
+}
+
 function formatDateShort(d: string | null): string {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -66,13 +102,10 @@ export function ReportsDashboard() {
       const html2pdf = (await import("html2pdf.js")).default;
       if (!overviewRef.current) throw new Error("Container not found");
       const timestamp = new Date().toISOString().slice(0, 10);
-      await html2pdf().set({
-        margin: [10, 0, 10, 0],
-        filename: `Netra-Thip_Overview_Report_${timestamp}.pdf`,
-        image: { type: "jpeg", quality: 1 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      }).from(overviewRef.current).save();
+      await html2pdf()
+        .set(getPdfOptions(`Netra-Thip_Overview_Report_${timestamp}.pdf`, overviewRef.current))
+        .from(overviewRef.current)
+        .save();
     } catch (err) {
       console.error("PDF export failed:", err);
     } finally {
@@ -86,22 +119,19 @@ export function ReportsDashboard() {
     if (exportingJobId) return;
     setExportingJobId(scanJobId);
     try {
-      const res = await fetch(`/api/reports/export?scanJobId=${scanJobId}`);
+      const res = await fetch(`/api/reports/export?scanJobId=${encodeURIComponent(scanJobId)}`);
       if (!res.ok) throw new Error("Failed to fetch tool report data");
       const json = (await res.json()) as ReportExportData;
       setToolExportData(json);
       await new Promise((r) => setTimeout(r, 600));
       const html2pdf = (await import("html2pdf.js")).default;
       if (!toolReportRef.current) throw new Error("Container not found");
-      const toolName = json.scanJobInfo?.toolName || "scan";
+      const toolName = formatPdfToolName(json.scanJobInfo?.toolName || "scan");
       const timestamp = new Date().toISOString().slice(0, 10);
-      await html2pdf().set({
-        margin: [10, 0, 10, 0],
-        filename: `Netra-Thip_${toolName}_Report_${timestamp}.pdf`,
-        image: { type: "jpeg", quality: 1 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      }).from(toolReportRef.current).save();
+      await html2pdf()
+        .set(getPdfOptions(`Netra-Thip_${toolName}_Report_${timestamp}.pdf`, toolReportRef.current))
+        .from(toolReportRef.current)
+        .save();
     } catch (err) {
       console.error("Tool PDF export failed:", err);
     } finally {
@@ -176,7 +206,7 @@ export function ReportsDashboard() {
         <div className="p-5 border-b border-[var(--line)]">
           <h3 className="text-[14px] font-bold text-[var(--ink)]">Per-Scan Reports</h3>
           <p className="text-[11.5px] text-[var(--ink-4)] mt-1">
-            Download individual pentest reports for each completed scan.
+            Download individual security reports for each completed scan.
           </p>
         </div>
 
@@ -236,7 +266,7 @@ export function ReportsDashboard() {
       </div>
 
       {/* ── Hidden containers for PDF rendering ── */}
-      <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }}>
+      <div style={{ position: "fixed", left: "-10000px", top: 0, pointerEvents: "none" }}>
         <div ref={overviewRef}>
           {fullExportData && <PdfReportTemplate data={fullExportData} />}
         </div>

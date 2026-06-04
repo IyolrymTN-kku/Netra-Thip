@@ -61,6 +61,66 @@ function formatCves(cves: unknown): string {
     .join(", ");
 }
 
+interface ToolReportProfile {
+  reportTitle: string;
+  summaryReportName: string;
+  assessmentName: string;
+  targetLabel: string;
+  targetSingular: string;
+  targetPlural: string;
+  recommendationSubject: string;
+}
+
+const DEFAULT_TOOL_REPORT_PROFILE: ToolReportProfile = {
+  reportTitle: "PENETRATION TESTING REPORT",
+  summaryReportName: "penetration testing report",
+  assessmentName: "automated penetration testing assessment",
+  targetLabel: "Target System",
+  targetSingular: "target system",
+  targetPlural: "target systems",
+  recommendationSubject: "target system",
+};
+
+const TOOL_REPORT_PROFILES: Record<string, ToolReportProfile> = {
+  vuls: {
+    reportTitle: "VULNERABILITY ASSESSMENT REPORT",
+    summaryReportName: "vulnerability assessment report",
+    assessmentName: "automated vulnerability assessment",
+    targetLabel: "Target Host",
+    targetSingular: "target host",
+    targetPlural: "target hosts",
+    recommendationSubject: "assessed hosts",
+  },
+  sirius: {
+    reportTitle: "NETWORK VULNERABILITY SCAN REPORT",
+    summaryReportName: "network vulnerability scan report",
+    assessmentName: "network vulnerability assessment",
+    targetLabel: "Network Target",
+    targetSingular: "network target",
+    targetPlural: "network targets",
+    recommendationSubject: "network attack surface",
+  },
+  metlo: {
+    reportTitle: "API SECURITY REPORT",
+    summaryReportName: "API security report",
+    assessmentName: "API security assessment",
+    targetLabel: "API Surface",
+    targetSingular: "API endpoint",
+    targetPlural: "API endpoints",
+    recommendationSubject: "API surface",
+  },
+};
+
+function getToolReportProfile(toolName: string): ToolReportProfile {
+  const normalized = toolName.toLowerCase();
+
+  if (normalized.includes("vuls")) return TOOL_REPORT_PROFILES.vuls;
+  if (normalized.includes("sirius")) return TOOL_REPORT_PROFILES.sirius;
+  if (normalized.includes("metlo")) return TOOL_REPORT_PROFILES.metlo;
+
+  return DEFAULT_TOOL_REPORT_PROFILE;
+}
+
 // ── Styles ──
 const S = {
   page: {
@@ -115,6 +175,10 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
     const riskLabel = getRiskLabel(kpi.riskScore);
     const riskColor = getRiskColor(kpi.riskScore);
     const targets = [...new Set(findings.map((f) => f.target))];
+    const reportProfile = getToolReportProfile(scanJobInfo.toolName);
+    const targetList = targets.join(", ") || "N/A";
+    const targetSubject = targets.length > 1 ? reportProfile.targetPlural : reportProfile.targetSingular;
+    const targetScope = targets.length > 1 ? "assessed scope" : reportProfile.targetSingular;
 
     return (
       <div ref={ref} style={S.page}>
@@ -146,7 +210,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
             textTransform: "uppercase",
             letterSpacing: "1px",
           }}>
-            PENETRATION TESTING REPORT
+            {reportProfile.reportTitle}
           </div>
 
           <div style={{
@@ -160,7 +224,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
             <table style={{ width: "100%", fontSize: "14px", borderCollapse: "collapse" }}>
               <tbody>
                 <tr><td style={{ padding: "8px 0", fontWeight: 600, color: "#64748B", width: "140px" }}>Tool:</td><td style={{ padding: "8px 0", fontWeight: 700 }}>{scanJobInfo.toolName}</td></tr>
-                <tr><td style={{ padding: "8px 0", fontWeight: 600, color: "#64748B" }}>Target System:</td><td style={{ padding: "8px 0", fontWeight: 700 }}>{targets.join(", ") || "N/A"}</td></tr>
+                <tr><td style={{ padding: "8px 0", fontWeight: 600, color: "#64748B" }}>{reportProfile.targetLabel}:</td><td style={{ padding: "8px 0", fontWeight: 700 }}>{targetList}</td></tr>
                 <tr><td style={{ padding: "8px 0", fontWeight: 600, color: "#64748B" }}>Scan ID:</td><td style={{ padding: "8px 0", fontFamily: "monospace", fontSize: "12px" }}>{scanJobInfo.id}</td></tr>
                 <tr><td style={{ padding: "8px 0", fontWeight: 600, color: "#64748B" }}>Report Date:</td><td style={{ padding: "8px 0" }}>{reportDate}</td></tr>
                 <tr><td style={{ padding: "8px 0", fontWeight: 600, color: "#64748B" }}>Assessor:</td><td style={{ padding: "8px 0" }}>{project.assessorName}</td></tr>
@@ -183,8 +247,8 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
           <h2 style={S.h2}>Executive Summary</h2>
 
           <p>
-            This penetration testing report presents the findings of a security assessment conducted
-            on the target system{targets.length > 1 ? "s" : ""} <strong>{targets.join(", ")}</strong> using
+            This {reportProfile.summaryReportName} presents the findings of a security assessment conducted
+            on the {targetSubject} <strong>{targetList}</strong> using
             the <strong>{scanJobInfo.toolName}</strong> tool. The assessment was performed
             on <strong>{formatDate(scanJobInfo.startedAt || scanJobInfo.createdAt)}</strong> as part
             of the <strong>{project.name}</strong> project.
@@ -202,11 +266,11 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
             <p style={{ margin: 0, fontSize: "14px" }}>
               <strong style={{ color: riskColor }}>⚠ {riskLabel} RISK:</strong>{" "}
               {kpi.riskScore >= 40
-                ? "The target system exhibits significant risk. Immediate remediation action is required to address identified security vulnerabilities."
+                ? `The ${targetScope} exhibits significant risk. Immediate remediation action is required to address identified security vulnerabilities.`
                 : kpi.riskScore >= 15
-                  ? "The target system shows moderate risk. Remediation should be prioritized based on severity levels."
+                  ? `The ${targetScope} shows moderate risk. Remediation should be prioritized based on severity levels.`
                   : kpi.riskScore > 0
-                    ? "The target system shows low risk. Identified issues should be addressed in regular maintenance cycles."
+                    ? `The ${targetScope} shows low risk. Identified issues should be addressed in regular maintenance cycles.`
                     : "No outstanding vulnerabilities detected. Continue regular security monitoring."}
             </p>
           </div>
@@ -235,7 +299,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
           <h3 style={S.h3}>Scan Details</h3>
           <table style={S.table}>
             <tbody>
-              <tr><td style={{ ...S.td, fontWeight: 600, color: "#64748B", width: "180px" }}>Target:</td><td style={S.td}>{targets.join(", ")}</td></tr>
+              <tr><td style={{ ...S.td, fontWeight: 600, color: "#64748B", width: "180px" }}>{reportProfile.targetLabel}:</td><td style={S.td}>{targetList}</td></tr>
               <tr><td style={{ ...S.td, fontWeight: 600, color: "#64748B" }}>Tool:</td><td style={S.td}>{scanJobInfo.toolName}</td></tr>
               <tr><td style={{ ...S.td, fontWeight: 600, color: "#64748B" }}>Status:</td><td style={S.td}>{scanJobInfo.status}</td></tr>
               <tr><td style={{ ...S.td, fontWeight: 600, color: "#64748B" }}>Scan Started:</td><td style={S.td}>{formatDate(scanJobInfo.startedAt)}</td></tr>
@@ -307,8 +371,9 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
               marginBottom: "28px",
               border: "1px solid #D9DEE8",
               borderRadius: "8px",
-              pageBreakInside: "avoid",
-              overflow: "hidden",
+              breakInside: "auto",
+              pageBreakInside: "auto",
+              overflow: "visible",
             }}>
               {/* Finding header */}
               <div style={{
@@ -358,7 +423,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
 
           <p>
             Based on the comprehensive analysis of identified vulnerabilities, their severity levels, exploitability,
-            and potential impact, the overall risk assessment for the target system is:
+            and potential impact, the overall risk assessment for the {targetScope} is:
           </p>
 
           <div style={{ ...S.cardRow, marginTop: "20px" }}>
@@ -408,7 +473,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
 
           <p>
             Based on the identified vulnerabilities and risk assessment, the following remediation actions are
-            recommended to improve the security posture of the target system:
+            recommended to improve the security posture of the {reportProfile.recommendationSubject}:
           </p>
 
           {SEVERITY_KEYS.filter((sev) => sev !== "INFO").map((sev) => {
@@ -436,8 +501,8 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
           <h2 style={S.h2}>Conclusion</h2>
 
           <p>
-            This automated penetration testing assessment has identified <strong>{kpi.total} security vulnerabilities</strong> in
-            the target system. The findings should be carefully reviewed and prioritized based on the risk levels assigned.
+            This {reportProfile.assessmentName} has identified <strong>{kpi.total} security vulnerabilities</strong> in
+            the {targetScope}. The findings should be carefully reviewed and prioritized based on the risk levels assigned.
           </p>
 
           <p>
@@ -461,7 +526,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
           </div>
 
           <div style={{ marginTop: "30px", fontSize: "10px", color: "#94A3B8", lineHeight: "1.6", borderTop: "1px solid #E5E9F0", paddingTop: "16px" }}>
-            <strong>DISCLAIMER:</strong> This penetration testing report is provided for educational and authorized security assessment
+            <strong>DISCLAIMER:</strong> This {reportProfile.summaryReportName} is provided for educational and authorized security assessment
             purposes only. The tools and techniques used are intended for legitimate security testing in controlled
             environments with proper authorization. Unauthorized use of these tools against systems you do not own or have
             explicit permission to test is illegal and unethical.
