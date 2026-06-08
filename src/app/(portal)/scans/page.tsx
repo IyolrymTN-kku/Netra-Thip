@@ -45,7 +45,25 @@ export default async function ScansListPage() {
           <h1 className="mono" style={{ fontSize: 24, fontWeight: 600, margin: "0 0 4px 0", color: "var(--ink)" }}>Scan History</h1>
           <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 14 }}>Track and review all security scans executed in your environment.</p>
         </div>
-        <Link href="/scans/new" className="nt-button-primary" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
+        <Link 
+          href="/scans/new" 
+          className="hover:brightness-110"
+          style={{ 
+            display: "inline-flex", 
+            alignItems: "center", 
+            gap: 8, 
+            textDecoration: "none",
+            background: "var(--primary, #0066FF)",
+            border: "1px solid var(--primary, #0066FF)",
+            borderRadius: 6,
+            color: "#FFFFFF",
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 500,
+            boxShadow: "0 2px 4px rgba(0, 102, 255, 0.2)",
+            transition: "all 0.2s"
+          }}
+        >
           <Icon name="plus" size={16} /> New Scan
         </Link>
       </div>
@@ -165,7 +183,26 @@ export default async function ScansListPage() {
                <h3 style={{ margin: "0 0 8px 0", color: "var(--ink)", fontSize: 18 }}>No scans executed yet</h3>
                <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 14 }}>Start your first security scan to populate this history.</p>
              </div>
-             <Link href="/scans/new" className="nt-button-primary" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", marginTop: 8 }}>
+             <Link 
+               href="/scans/new" 
+               className="hover:brightness-110"
+               style={{ 
+                 display: "inline-flex", 
+                 alignItems: "center", 
+                 gap: 8, 
+                 textDecoration: "none", 
+                 marginTop: 8,
+                 background: "var(--primary, #0066FF)",
+                 border: "1px solid var(--primary, #0066FF)",
+                 borderRadius: 6,
+                 color: "#FFFFFF",
+                 padding: "10px 20px",
+                 fontSize: 14,
+                 fontWeight: 500,
+                 boxShadow: "0 2px 4px rgba(0, 102, 255, 0.2)",
+                 transition: "all 0.2s"
+               }}
+             >
                <Icon name="plus" size={16} /> Run a Scan
              </Link>
           </div>

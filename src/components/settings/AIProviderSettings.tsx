@@ -129,7 +129,28 @@ export function AIProviderSettings({ initialKeys }: Props) {
               </div>
 
               {!isEditing && (
-                <button className="nt-button-secondary" style={{ fontSize: 12, padding: "6px 12px" }} onClick={() => startEdit(provider.id)}>
+                <button 
+                  style={{ 
+                    fontSize: 13, 
+                    fontWeight: 500,
+                    padding: "6px 14px", 
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 6,
+                    color: "var(--ink)",
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }} 
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = "var(--surface-3)";
+                    e.currentTarget.style.borderColor = "var(--ink-3)";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = "var(--surface-2)";
+                    e.currentTarget.style.borderColor = "var(--line)";
+                  }}
+                  onClick={() => startEdit(provider.id)}
+                >
                   {saved ? "Edit" : "Configure"}
                 </button>
               )}
@@ -189,9 +210,55 @@ export function AIProviderSettings({ initialKeys }: Props) {
                     </div>
                   )}
 
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-                    <button className="nt-button-secondary" disabled={saving} onClick={cancelEdit}>Cancel</button>
-                    <button className="nt-button-primary" disabled={saving || (!saved && !apiKey.trim())} onClick={() => handleSave(provider.id)}>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8 }}>
+                    <button 
+                      style={{
+                        fontSize: 13, 
+                        fontWeight: 500,
+                        padding: "8px 16px", 
+                        background: "transparent",
+                        border: "1px solid var(--line)",
+                        borderRadius: 6,
+                        color: "var(--ink)",
+                        cursor: "pointer",
+                        transition: "all 0.2s"
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = "var(--surface-3)";
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                      disabled={saving} 
+                      onClick={cancelEdit}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      style={{
+                        fontSize: 13, 
+                        fontWeight: 500,
+                        padding: "8px 16px", 
+                        background: "var(--primary, #0066FF)",
+                        border: "1px solid var(--primary, #0066FF)",
+                        borderRadius: 6,
+                        color: "#FFFFFF",
+                        cursor: saving || (!saved && !apiKey.trim()) ? "not-allowed" : "pointer",
+                        opacity: saving || (!saved && !apiKey.trim()) ? 0.6 : 1,
+                        transition: "all 0.2s",
+                        boxShadow: "0 2px 4px rgba(0, 102, 255, 0.2)"
+                      }}
+                      onMouseOver={(e) => {
+                        if (!saving && (saved || apiKey.trim())) {
+                          e.currentTarget.style.filter = "brightness(1.1)";
+                        }
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.filter = "none";
+                      }}
+                      disabled={saving || (!saved && !apiKey.trim())} 
+                      onClick={() => handleSave(provider.id)}
+                    >
                       {saving ? "Saving..." : "Save Configuration"}
                     </button>
                   </div>

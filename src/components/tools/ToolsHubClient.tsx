@@ -258,7 +258,25 @@ export function ToolsHubClient({ tools, projectId, savedConfigs }: ToolsHubClien
                   {tool.runtime}
                 </div>
 
-                <button className="nt-button-primary" style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, borderRadius: 8 }} onClick={() => openDrawer(tool)}>
+                <button 
+                  style={{ 
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "8px 16px", 
+                    fontSize: 13, 
+                    fontWeight: 600, 
+                    borderRadius: 6,
+                    background: "var(--primary, #0066FF)",
+                    border: "1px solid var(--primary, #0066FF)",
+                    color: "#FFFFFF",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 4px rgba(0, 102, 255, 0.2)",
+                    transition: "all 0.2s"
+                  }} 
+                  onMouseOver={(e) => e.currentTarget.style.filter = "brightness(1.1)"}
+                  onMouseOut={(e) => e.currentTarget.style.filter = "none"}
+                  onClick={() => openDrawer(tool)}
+                >
                   Launch <Icon name="arrowRight" size={14} style={{ marginLeft: 6 }} />
                 </button>
               </div>
@@ -267,84 +285,156 @@ export function ToolsHubClient({ tools, projectId, savedConfigs }: ToolsHubClien
         })}
       </div>
 
-      {/* Slide-over Drawer for Execution */}
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: 480,
-          background: "var(--surface)",
-          borderLeft: "1px solid var(--line)",
-          boxShadow: "-10px 0 30px rgba(0,0,0,0.1)",
-          transform: selectedToolId ? "translateX(0)" : "translateX(100%)",
-          transition: "transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-          display: "flex",
-          flexDirection: "column",
-          zIndex: 50
-        }}
-      >
-        {selectedTool && (
-          <>
-            {/* Drawer Header */}
-            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", background: "var(--surface-2)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: `color-mix(in srgb, ${selectedTool.color} 15%, transparent)`, color: selectedTool.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>
-                  {selectedTool.glyph}
+      {/* Centered Modal Overlay */}
+      {selectedToolId && selectedTool && (
+        <>
+          <style>{`
+            @keyframes modalFadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+            @keyframes modalSlideUp {
+              from { opacity: 0; transform: translateY(20px) scale(0.98); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(10, 22, 40, 0.7)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100,
+              padding: 24,
+              animation: "modalFadeIn 0.2s ease-out forwards"
+            }}
+            onClick={closeDrawer}
+          >
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 540,
+                background: "var(--surface)",
+                borderRadius: 16,
+                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05)",
+                border: "1px solid var(--line)",
+                display: "flex",
+                flexDirection: "column",
+                maxHeight: "90vh",
+                overflow: "hidden",
+                animation: "modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", background: "var(--surface-2)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `color-mix(in srgb, ${selectedTool.color} 15%, transparent)`, color: selectedTool.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>
+                    {selectedTool.glyph}
+                  </div>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>{selectedTool.name}</h2>
+                    <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{selectedTool.tagline}</div>
+                  </div>
                 </div>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>{selectedTool.name}</h2>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{selectedTool.tagline}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={closeDrawer}
-                style={{ background: "none", border: "none", color: "var(--ink-3)", cursor: "pointer", padding: 4 }}
-              >
-                <Icon name="x" size={18} />
-              </button>
-            </div>
-
-            {/* Drawer Body (Form) */}
-            <div style={{ padding: "24px", flex: 1, overflowY: "auto" }}>
-              <DynamicForm tool={selectedTool} values={values} onChange={setVal} configuredFields={configuredFields} />
-            </div>
-
-            {/* Drawer Footer (Action) */}
-            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line)", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", alignItems: "center", gap: 6 }}>
-                <Icon name="lock" size={12} /> BYOK Secure
-              </div>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <button type="button" className="btn" onClick={closeDrawer} disabled={loading}>
-                  Cancel
-                </button>
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  onClick={handleLaunch}
-                  disabled={!requiredOk || loading}
-                  style={{ opacity: (!requiredOk || loading) ? 0.5 : 1, cursor: (!requiredOk || loading) ? "not-allowed" : "pointer" }}
+                  onClick={closeDrawer}
+                  style={{ background: "none", border: "none", color: "var(--ink-3)", cursor: "pointer", padding: 4, transition: "color 0.2s" }}
+                  onMouseOver={(e) => e.currentTarget.style.color = "var(--ink)"}
+                  onMouseOut={(e) => e.currentTarget.style.color = "var(--ink-3)"}
                 >
-                  {loading ? (
-                    <>
-                      <Icon name="refresh" size={14} className="spin" />
-                      Launching...
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="play" size={12} stroke={2.4} />
-                      Run scan
-                    </>
-                  )}
+                  <Icon name="x" size={18} />
                 </button>
               </div>
+  
+              {/* Modal Body (Form) */}
+              <div style={{ padding: "24px", flex: 1, overflowY: "auto" }}>
+                <DynamicForm tool={selectedTool} values={values} onChange={setVal} configuredFields={configuredFields} />
+              </div>
+  
+              {/* Modal Footer (Action) */}
+              <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line)", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <Icon name="lock" size={12} /> BYOK Secure
+                </div>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <button 
+                    type="button" 
+                    style={{
+                      fontSize: 13, 
+                      fontWeight: 500,
+                      padding: "8px 16px", 
+                      background: "transparent",
+                      border: "1px solid var(--line)",
+                      borderRadius: 6,
+                      color: "var(--ink)",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      transition: "all 0.2s"
+                    }}
+                    onMouseOver={(e) => {
+                      if (!loading) e.currentTarget.style.background = "var(--surface-3)";
+                    }}
+                    onMouseOut={(e) => {
+                      if (!loading) e.currentTarget.style.background = "transparent";
+                    }}
+                    onClick={closeDrawer} 
+                    disabled={loading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLaunch}
+                    disabled={!requiredOk || loading}
+                    style={{ 
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 13, 
+                      fontWeight: 500,
+                      padding: "8px 16px", 
+                      background: "var(--primary, #0066FF)",
+                      border: "1px solid var(--primary, #0066FF)",
+                      borderRadius: 6,
+                      color: "#FFFFFF",
+                      cursor: (!requiredOk || loading) ? "not-allowed" : "pointer",
+                      opacity: (!requiredOk || loading) ? 0.6 : 1,
+                      boxShadow: "0 2px 4px rgba(0, 102, 255, 0.2)",
+                      transition: "all 0.2s"
+                    }}
+                    onMouseOver={(e) => {
+                      if (requiredOk && !loading) e.currentTarget.style.filter = "brightness(1.1)";
+                    }}
+                    onMouseOut={(e) => {
+                      if (requiredOk && !loading) e.currentTarget.style.filter = "none";
+                    }}
+                  >
+                    {loading ? (
+                      <>
+                        <Icon name="refresh" size={14} className="animate-spin" />
+                        Launching...
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="play" size={12} stroke={2.4} />
+                        Run scan
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
