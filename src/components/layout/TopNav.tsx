@@ -2,6 +2,7 @@
 
 import { signOut } from "next-auth/react";
 import { Icon } from "@/components/icons/Icon";
+import type { IconName } from "@/components/icons/Icon";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
@@ -33,7 +34,7 @@ export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
   const currentLabel = segment.charAt(0).toUpperCase() + segment.slice(1);
   
   let parentLabel = "Operate";
-  let parentIcon: any = "activity";
+  let parentIcon: IconName = "activity";
   if (['settings', 'audit'].includes(segment)) {
     parentLabel = "Manage";
     parentIcon = "settings";
