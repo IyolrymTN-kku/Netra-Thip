@@ -132,8 +132,8 @@ export const TOOLS: ToolDef[] = [
     desc: "An agent-less, SSH-based vulnerability scanner for Linux and Unix systems. VULS authenticates remotely to identify outdated packages, misconfigurations, and specific CVEs matching the installed software inventory.",
     features: ["Agentless", "High Accuracy", "OS-Level Vulnerabilities"],
     fields: [
-      { id: "target_ip", label: "Target IP", type: "textarea", placeholder: "192.168.87.138\n192.168.87.139", required: true, group: "Target", hint: "Enter one or more Linux target IP addresses. Separate multiple IPs by new line or comma."},
-      { id: "ssh_user", label: "SSH user", type: "textarea", placeholder: "admin\nubuntu", required: true, group: "Auth", hint: "Enter SSH usernames in the same order as Target IPs. Example: line 1 username is used for line 1 IP."},
+      { id: "target_ip", label: "Target IP", type: "textarea", placeholder: "192.168.87.138,192.168.87.139", required: true, group: "Target", hint: "Enter one or more Linux target IP addresses. Separate multiple IPs by new line or comma."},
+      { id: "ssh_user", label: "SSH user", type: "textarea", placeholder: "admin,ubuntu", required: true, group: "Auth", hint: "Enter SSH usernames in the same order as Target IPs. Example: line 1 username is used for line 1 IP."},
       { id: "ssh_port", label: "SSH port", type: "number", default: 22, required: true, group: "Auth"},
     ],
   },
