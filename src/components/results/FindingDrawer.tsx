@@ -16,6 +16,10 @@ import {
   getPrimaryToolCveDetail,
   getToolCveDetails,
 } from "@/lib/findings/cve-details";
+import {
+  formatMetloLastActive,
+  getMetloEndpointMetadata,
+} from "./metlo-display";
 import { SevBadge } from "./SevBadge";
 import { StatusPill } from "./StatusPill";
 import type { FindingRow } from "./types";
@@ -236,6 +240,12 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
     : displayFinding.description;
   const showSiriusMetrics = toolKey === "sirius";
   const showVulsDetails = toolKey === "vuls";
+  const showMetloDetails = toolKey === "metlo";
+  const metloMetadata = showMetloDetails
+    ? getMetloEndpointMetadata(displayFinding)
+    : null;
+  const metloLastActiveAt =
+    metloMetadata?.lastActiveAt ?? new Date(displayFinding.updatedAt);
   const attackSurface = [
     { label: "Vector", value: cvssMetrics.attackVector },
     { label: "Complexity", value: cvssMetrics.attackComplexity },
@@ -471,6 +481,45 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                   >
                     {displayDescription || "-- no description provided --"}
                   </div>
+                )}
+
+                {showMetloDetails && metloMetadata && (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <DetailHeading>Endpoint Overview</DetailHeading>
+                      <InfoGrid
+                        rows={[
+                          { label: "Risk Score", value: metloMetadata.riskScore },
+                          { label: "Authenticated", value: metloMetadata.authenticated },
+                          { label: "Visibility", value: metloMetadata.visibility },
+                          {
+                            label: "Last Used",
+                            value: formatMetloLastActive(metloLastActiveAt),
+                          },
+                          {
+                            label: "Requests",
+                            value: metloMetadata.requestCount ?? undefined,
+                          },
+                          {
+                            label: "PII Fields",
+                            value: metloMetadata.piiFieldCount ?? undefined,
+                          },
+                        ]}
+                      />
+                    </div>
+
+                    {metloMetadata.permissions.length > 0 && (
+                      <DetailBlock title="Permissions" mono>
+                        {metloMetadata.permissions.join("\n")}
+                      </DetailBlock>
+                    )}
+
+                    {metloMetadata.sensitiveData.length > 0 && (
+                      <DetailBlock title="Detected Sensitive Data" mono>
+                        {metloMetadata.sensitiveData.join("\n")}
+                      </DetailBlock>
+                    )}
+                  </>
                 )}
 
                 {showRichDetails && detailLoading && (
