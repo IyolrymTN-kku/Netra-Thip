@@ -20,12 +20,28 @@ type FindingDisplayEntry =
       toolName: string;
       findings: FindingRow[];
       maxSev: Severity;
+    }
+  | {
+      kind: "autopentestx-cve-group";
+      key: string;
+      title: string;
+      target: string;
+      toolName: string;
+      findings: FindingRow[];
+      representative: FindingRow;
+      cves: AutopentestxCve[];
+      maxSev: Severity;
+      cvss: number | null;
     };
 type AssociatedCve = {
   cveId: string;
   cvss: number | null | undefined;
   severity: Severity;
   description: string;
+};
+type AutopentestxCve = AssociatedCve & {
+  key: string;
+  finding: FindingRow;
 };
 
 interface FindingsTableProps {
@@ -43,6 +59,7 @@ const SEVERITY_OPTIONS: SeverityFilter[] = [
   "INFO",
 ];
 const STATUS_OPTIONS: StatusFilter[] = ["ALL", "OPEN", "RESOLVED", "IGNORED"];
+const AUTOPENTESTX_TOOL = "autopentestx";
 const MULTI_TARGET_DROPDOWN_TOOLS = new Set(["sirius", "vuls", "metlo"]);
 const SEVERITY_RANK: Record<Severity, number> = {
   CRITICAL: 4,
@@ -51,6 +68,7 @@ const SEVERITY_RANK: Record<Severity, number> = {
   LOW: 1,
   INFO: 0,
 };
+const CVE_SUFFIX_RE = /\s*:\s*CVE-\d{4}-\d{4,}\s*$/i;
 
 function relativeAge(d: Date): string {
   const ms = Date.now() - new Date(d).getTime();
@@ -61,6 +79,121 @@ function relativeAge(d: Date): string {
   if (hrs < 24) return `${hrs}h`;
   const days = Math.floor(hrs / 24);
   return `${days}d`;
+}
+
+function getFindingCves(row: FindingRow): AssociatedCve[] {
+  return Array.isArray(row.cves)
+    ? (row.cves as unknown as AssociatedCve[])
+    : [];
+}
+
+function getAutopentestxGroupTitle(row: FindingRow): string | null {
+  if (row.scanJob.toolName.toLowerCase() !== AUTOPENTESTX_TOOL) return null;
+
+  const baseTitle = row.title.replace(CVE_SUFFIX_RE, "").trim();
+  if (!baseTitle || baseTitle === row.title.trim()) return null;
+
+  const servicePort = baseTitle.match(/^(.*?)\s+CVE\s+on\s+port\s+(\d+)\s*$/i);
+  if (servicePort) {
+    return `${servicePort[1].trim()} Service Vulnerabilities (Port ${servicePort[2]})`;
+  }
+
+  return baseTitle;
+}
+
+function isHigherRiskFinding(candidate: FindingRow, current: FindingRow): boolean {
+  const candidateRank = SEVERITY_RANK[candidate.severity];
+  const currentRank = SEVERITY_RANK[current.severity];
+  if (candidateRank !== currentRank) return candidateRank > currentRank;
+
+  const candidateCvss = candidate.cvss ?? -1;
+  const currentCvss = current.cvss ?? -1;
+  if (candidateCvss !== currentCvss) return candidateCvss > currentCvss;
+
+  return (
+    new Date(candidate.createdAt).getTime() >
+    new Date(current.createdAt).getTime()
+  );
+}
+
+function buildFindingDisplayEntries(findings: FindingRow[]): FindingDisplayEntry[] {
+  const groups = new Map<
+    string,
+    Extract<FindingDisplayEntry, { kind: "autopentestx-cve-group" }>
+  >();
+  const rowToGroup = new Map<string, string>();
+
+  for (const row of findings) {
+    const cves = getFindingCves(row);
+    const title = cves.length > 0 ? getAutopentestxGroupTitle(row) : null;
+    if (!title) continue;
+
+    const key = `${row.scanJobId}:${AUTOPENTESTX_TOOL}:${row.target}:${title.toLowerCase()}`;
+    const group = groups.get(key) ?? {
+      kind: "autopentestx-cve-group",
+      key,
+      title,
+      target: row.target,
+      toolName: row.scanJob.toolName,
+      findings: [],
+      representative: row,
+      cves: [],
+      maxSev: row.severity,
+      cvss: row.cvss ?? null,
+    };
+
+    group.findings.push(row);
+    for (const cve of cves) {
+      const cveId = cve.cveId?.trim();
+      if (!cveId) continue;
+
+      const detail = {
+        ...cve,
+        cveId,
+        description: cve.description || row.description,
+        key: `${row.id}:${cveId}`,
+        finding: row,
+      };
+      const existingIndex = group.cves.findIndex(
+        (existing) => existing.cveId === cveId,
+      );
+
+      if (existingIndex === -1) {
+        group.cves.push(detail);
+      } else if (isHigherRiskFinding(row, group.cves[existingIndex].finding)) {
+        group.cves[existingIndex] = detail;
+      }
+    }
+    if (SEVERITY_RANK[row.severity] > SEVERITY_RANK[group.maxSev]) {
+      group.maxSev = row.severity;
+    }
+    if ((row.cvss ?? -1) > (group.cvss ?? -1)) {
+      group.cvss = row.cvss ?? null;
+    }
+    if (isHigherRiskFinding(row, group.representative)) {
+      group.representative = row;
+    }
+
+    groups.set(key, group);
+    rowToGroup.set(row.id, key);
+  }
+
+  const emitted = new Set<string>();
+  const entries: FindingDisplayEntry[] = [];
+
+  for (const row of findings) {
+    const groupKey = rowToGroup.get(row.id);
+    if (!groupKey) {
+      entries.push({ kind: "finding", finding: row });
+      continue;
+    }
+    if (emitted.has(groupKey)) continue;
+
+    emitted.add(groupKey);
+    entries.push(groups.get(groupKey)!);
+  }
+
+  return entries;
 }
 
 interface FilterRowProps<T extends string> {
@@ -201,6 +334,7 @@ export function FindingsTable({
       string,
       Extract<FindingDisplayEntry, { kind: "target" }>
     >();
+    const targetRowToGroup = new Map<string, string>();
 
     for (const r of filtered) {
       const toolName = r.scanJob.toolName.toLowerCase();
@@ -227,25 +361,54 @@ export function FindingsTable({
         group.maxSev = r.severity;
       }
       groups.set(key, group);
+      targetRowToGroup.set(r.id, key);
+    }
+
+    const autoEntries = buildFindingDisplayEntries(
+      filtered.filter((r) => !targetRowToGroup.has(r.id)),
+    );
+    const autoEntryByFirstRow = new Map<string, FindingDisplayEntry>();
+    const autoGroupedRows = new Set<string>();
+
+    for (const entry of autoEntries) {
+      if (entry.kind === "finding") {
+        autoEntryByFirstRow.set(entry.finding.id, entry);
+        continue;
+      }
+      if (entry.kind === "autopentestx-cve-group") {
+        const first = entry.findings[0];
+        if (first) autoEntryByFirstRow.set(first.id, entry);
+        for (const finding of entry.findings) {
+          autoGroupedRows.add(finding.id);
+        }
+      }
     }
 
     const emitted = new Set<string>();
     const entries: FindingDisplayEntry[] = [];
 
     for (const r of filtered) {
-      const key = `${r.scanJobId}:${r.scanJob.toolName.toLowerCase()}:${r.target}`;
-      const group = groups.get(key);
+      const targetKey = targetRowToGroup.get(r.id);
+      const group = targetKey ? groups.get(targetKey) : null;
 
-      if (!group) {
-        entries.push({ kind: "finding", finding: r });
+      if (group) {
+        if (emitted.has(group.key)) {
+          continue;
+        }
+
+        emitted.add(group.key);
+        entries.push(group);
         continue;
       }
-      if (emitted.has(key)) {
+
+      const autoEntry = autoEntryByFirstRow.get(r.id);
+      if (autoEntry) {
+        entries.push(autoEntry);
         continue;
       }
+      if (autoGroupedRows.has(r.id)) continue;
 
-      emitted.add(key);
-      entries.push(group);
+      entries.push({ kind: "finding", finding: r });
     }
 
     return entries;
@@ -254,7 +417,7 @@ export function FindingsTable({
   const renderFindingRow = (r: FindingRow) => {
     const sel = r.id === selectedId;
     const isExpanded = expandedRows.has(r.id);
-    const cves = (r.cves as unknown as AssociatedCve[] | null) ?? [];
+    const cves = getFindingCves(r);
     const hasCves = cves.length > 0;
 
     return (
@@ -372,6 +535,157 @@ export function FindingsTable({
                         </td>
                         <td style={{ padding: "8px 12px" }}>
                           <span style={{ fontSize: 12.5, color: "var(--ink-2)", display: "block", maxWidth: 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {cve.description}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
+
+  const renderAutopentestxGroupRow = (
+    entry: Extract<FindingDisplayEntry, { kind: "autopentestx-cve-group" }>,
+  ) => {
+    const sel = entry.findings.some((finding) => finding.id === selectedId);
+    const isExpanded = expandedRows.has(entry.key);
+
+    return (
+      <Fragment key={entry.key}>
+        <tr
+          onClick={(e) => toggleExpand(e, entry.key)}
+          style={{
+            cursor: "pointer",
+            background: sel ? "var(--nt-blue-50)" : "transparent",
+            borderBottom: "1px solid var(--line)",
+          }}
+        >
+          <td
+            style={{ padding: "10px 12px", textAlign: "center" }}
+            onClick={(e) => toggleExpand(e, entry.key)}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 24,
+                height: 24,
+                borderRadius: 4,
+                background: isExpanded ? "var(--line)" : "transparent",
+                cursor: "pointer",
+                transition: "transform 0.2s",
+                transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+              }}
+            >
+              <Icon name="chevronRight" size={14} color="var(--ink-3)" />
+            </div>
+          </td>
+          <td style={{ padding: "10px 16px" }}>
+            <SevBadge severity={entry.maxSev} />
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <span
+              style={{
+                fontWeight: 600,
+                color: "var(--ink)",
+                display: "inline-block",
+                maxWidth: 280,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "middle",
+              }}
+            >
+              {entry.title}
+            </span>
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <CvssBar score={entry.cvss} severity={entry.maxSev} />
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <span
+              style={{
+                fontSize: 11.5,
+                fontWeight: 500,
+                color: "var(--ink-2)",
+              }}
+            >
+              {entry.toolName}
+            </span>
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <span
+              className="mono"
+              style={{ fontSize: 11, color: "var(--ink-2)" }}
+            >
+              {entry.target}
+            </span>
+          </td>
+          <td style={{ padding: "10px 12px" }}>
+            <StatusPill status={entry.representative.status} />
+          </td>
+          <td
+            style={{
+              padding: "10px 16px",
+              textAlign: "right",
+            }}
+          >
+            <span
+              suppressHydrationWarning
+              className="mono"
+              style={{ fontSize: 11, color: "var(--ink-3)" }}
+            >
+              {relativeAge(entry.representative.createdAt)}
+            </span>
+          </td>
+        </tr>
+
+        {isExpanded && (
+          <tr style={{ background: "var(--surface-2)" }}>
+            <td colSpan={8} style={{ padding: 0, borderBottom: "1px solid var(--line)" }}>
+              <div style={{ padding: "16px 24px 16px 64px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                  Associated CVEs ({entry.cves.length})
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--surface-1)", borderRadius: 6, overflow: "hidden", border: "1px solid var(--line)" }}>
+                  <tbody>
+                    {entry.cves.map((cve, i) => (
+                      <tr
+                        key={cve.key}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(cve.finding);
+                        }}
+                        style={{
+                          borderBottom:
+                            i < entry.cves.length - 1
+                              ? "1px solid var(--line)"
+                              : "none",
+                          cursor: "pointer",
+                          background:
+                            selectedId === cve.finding.id
+                              ? "var(--nt-blue-50)"
+                              : "transparent",
+                        }}
+                      >
+                        <td style={{ padding: "8px 12px", width: "160px" }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>{cve.cveId}</span>
+                        </td>
+                        <td style={{ padding: "8px 12px", width: "120px" }}>
+                          <SevBadge severity={cve.severity} />
+                        </td>
+                        <td style={{ padding: "8px 12px", width: "140px" }}>
+                          <CvssBar score={cve.cvss} severity={cve.severity} />
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <span style={{ fontSize: 12.5, color: "var(--ink-2)", display: "block", maxWidth: 720, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {cve.description}
                           </span>
                         </td>
@@ -580,6 +894,9 @@ export function FindingsTable({
                 if (entry.kind === "finding") {
                   return renderFindingRow(entry.finding);
                 }
+                if (entry.kind === "autopentestx-cve-group") {
+                  return renderAutopentestxGroupRow(entry);
+                }
 
                 const isExpanded = expandedTargets.has(entry.key);
                 return (
@@ -670,7 +987,16 @@ export function FindingsTable({
                         </div>
                       </td>
                     </tr>
-                    {isExpanded && findings.map(renderFindingRow)}
+                    {isExpanded &&
+                      buildFindingDisplayEntries(findings).map((entry) => {
+                        if (entry.kind === "finding") {
+                          return renderFindingRow(entry.finding);
+                        }
+                        if (entry.kind === "autopentestx-cve-group") {
+                          return renderAutopentestxGroupRow(entry);
+                        }
+                        return null;
+                      })}
                   </Fragment>
                 );
               })

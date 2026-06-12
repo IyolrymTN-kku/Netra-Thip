@@ -26,13 +26,11 @@ function chunkItems<T>(items: T[], size: number): T[][] {
 const OVERVIEW_FINDINGS_PER_PAGE = 3;
 const OVERVIEW_PAGE_STYLE = {
   width: `${PDF_PAGE_WIDTH_PX}px`,
-  height: `${PDF_PAGE_HEIGHT_PX}px`,
   minHeight: `${PDF_PAGE_HEIGHT_PX}px`,
-  maxHeight: `${PDF_PAGE_HEIGHT_PX}px`,
   padding: "40px",
   backgroundColor: "#FFFFFF",
   boxSizing: "border-box" as const,
-  overflow: "hidden" as const,
+  overflow: "visible" as const,
 };
 
 export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplateProps>(
@@ -160,11 +158,12 @@ export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplatePro
                 const findingIndex = pageIndex * OVERVIEW_FINDINGS_PER_PAGE + index;
 
                 return (
-                  <div key={f.id} style={{
+                  <div key={f.id} data-pdf-avoid-break="true" style={{
                     marginBottom: "30px",
                     border: "1px solid #D9DEE8",
                     borderRadius: "8px",
-                    pageBreakInside: "auto"
+                    breakInside: "avoid",
+                    pageBreakInside: "avoid"
                   }}>
                     <div style={{
                       padding: "15px",

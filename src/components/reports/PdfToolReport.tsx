@@ -1,6 +1,6 @@
 "use client";
 
-import React, { forwardRef } from "react";
+import React, { forwardRef, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PDF_PAGE_HEIGHT_PX, PDF_PAGE_WIDTH_PX } from "./pdfLayout";
 import { SEVERITY_KEYS, type ReportExportData, type ReportFinding } from "./types";
 
@@ -144,6 +144,7 @@ const DETAILED_FINDINGS_AVAILABLE_HEIGHT =
   TOOL_PAGE_CONTENT_HEIGHT - SECTION_HEADING_HEIGHT - PAGE_BOTTOM_BUFFER;
 const RECOMMENDATIONS_AVAILABLE_HEIGHT =
   TOOL_PAGE_CONTENT_HEIGHT - SECTION_HEADING_HEIGHT - 86 - PAGE_BOTTOM_BUFFER;
+const DETAILED_FINDING_CARD_GAP = 28;
 const MAX_DETAILED_FINDINGS_PER_PAGE = 3;
 const MAX_RECOMMENDATIONS_PER_PAGE = 8;
 
@@ -180,6 +181,29 @@ function chunkByEstimatedHeight<T>(
     page.push(item);
     pageHeight += itemHeight;
   }
+
+  if (page.length > 0) pages.push(page);
+  return pages;
+}
+
+function chunkByMeasuredHeight<T>(items: T[], heights: number[], maxHeight: number, itemGap = 0): T[][] {
+  const pages: T[][] = [];
+  let page: T[] = [];
+  let pageHeight = 0;
+
+  items.forEach((item, index) => {
+    const itemHeight = Math.ceil(heights[index] || maxHeight) + itemGap;
+    const exceedsHeight = page.length > 0 && pageHeight + itemHeight > maxHeight;
+
+    if (exceedsHeight) {
+      pages.push(page);
+      page = [];
+      pageHeight = 0;
+    }
+
+    page.push(item);
+    pageHeight += itemHeight;
+  });
 
   if (page.length > 0) pages.push(page);
   return pages;
@@ -228,14 +252,12 @@ const S = {
   },
   section: {
     width: `${PDF_PAGE_WIDTH_PX}px`,
-    height: `${PDF_PAGE_HEIGHT_PX}px`,
     minHeight: `${PDF_PAGE_HEIGHT_PX}px`,
-    maxHeight: `${PDF_PAGE_HEIGHT_PX}px`,
     padding: `${TOOL_PAGE_PADDING_Y}px ${TOOL_PAGE_PADDING_X}px`,
     pageBreakBefore: "always" as const,
     backgroundColor: "#FFFFFF",
     boxSizing: "border-box" as const,
-    overflow: "hidden" as const,
+    overflow: "visible" as const,
   },
   firstSection: { padding: `${TOOL_PAGE_PADDING_Y}px ${TOOL_PAGE_PADDING_X}px` },
   h2: {
@@ -282,11 +304,170 @@ const S = {
   cardLabel: { fontSize: "10px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" as const, letterSpacing: "1px", marginBottom: "8px" },
   cardValue: { fontSize: "32px", fontWeight: 800, margin: "0" },
   confidential: { color: "#E11D48", fontWeight: 700, fontSize: "13px", letterSpacing: "2px", textTransform: "uppercase" as const },
+  measureArea: {
+    position: "absolute" as const,
+    top: 0,
+    left: 0,
+    width: `${PDF_PAGE_WIDTH_PX - TOOL_PAGE_PADDING_X * 2}px`,
+    visibility: "hidden" as const,
+    pointerEvents: "none" as const,
+    zIndex: -1,
+  },
 };
+
+function DetailedFindingCard({ item }: { item: IndexedFinding }) {
+  const { finding: f, index } = item;
+  const cves = formatCves(f.cves);
+
+  return (
+    <div
+      data-pdf-avoid-break="true"
+      data-pdf-finding-card="true"
+      style={{
+        marginBottom: `${DETAILED_FINDING_CARD_GAP}px`,
+        border: "1px solid #D9DEE8",
+        borderRadius: "8px",
+        breakInside: "avoid",
+        pageBreakInside: "avoid",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{
+        padding: "14px 18px",
+        backgroundColor: "#F1F5F9",
+        borderBottom: "1px solid #D9DEE8",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: "12px",
+      }}>
+        <span style={{ fontWeight: 800, fontSize: "14px", lineHeight: "1.45" }}>
+          {index + 1}. {f.title}
+        </span>
+        <span style={{ ...S.badge(f.severity), flex: "0 0 auto" }}>{f.severity}</span>
+      </div>
+
+      <div style={{ padding: "18px" }}>
+        <table style={{ ...S.table, marginBottom: "14px", fontSize: "12px" }}>
+          <tbody>
+            <tr><td style={{ width: "100px", fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Target:</td><td style={{ padding: "4px 0", fontFamily: "monospace" }}>{f.target}</td></tr>
+            <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVSS:</td><td style={{ padding: "4px 0" }}>{f.cvss ?? "N/A"}</td></tr>
+            <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Status:</td><td style={{ padding: "4px 0" }}>{f.status}</td></tr>
+            {cves && (
+              <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVEs:</td><td style={{ padding: "4px 0", fontFamily: "monospace", fontSize: "11px" }}>{cves}</td></tr>
+            )}
+          </tbody>
+        </table>
+
+        <div data-pdf-avoid-break="true">
+          <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#0066FF", margin: "12px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Description</h4>
+          <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
+            {f.description || "No description provided."}
+          </div>
+        </div>
+
+        <div data-pdf-avoid-break="true">
+          <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#10B981", margin: "14px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remediation</h4>
+          <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
+            {f.remediation || "No remediation guidance provided."}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VulnerabilityTableRow({ item }: { item: IndexedFinding }) {
+  const { finding: f, index } = item;
+
+  return (
+    <tr key={f.id} data-pdf-avoid-break="true" data-pdf-vulnerability-row="true">
+      <td style={{ ...S.td, ...S.numberTd, color: "#94A3B8" }}>{index + 1}</td>
+      <td style={{ ...S.td, fontWeight: 600 }}>{f.title}</td>
+      <td style={S.td}><span style={S.badge(f.severity)}>{f.severity}</span></td>
+      <td style={{ ...S.td, fontFamily: "monospace", fontSize: "11px" }}>{f.target}</td>
+      <td style={{ ...S.td, textAlign: "right", fontWeight: 700 }}>{f.cvss ?? "-"}</td>
+    </tr>
+  );
+}
+
+function VulnerabilityTableHead() {
+  return (
+    <thead>
+      <tr>
+        <th style={{ ...S.th, ...S.numberTh }}>#</th>
+        <th style={S.th}>Vulnerability</th>
+        <th style={{ ...S.th, width: "90px" }}>Severity</th>
+        <th style={S.th}>Target</th>
+        <th style={{ ...S.th, width: "50px", textAlign: "right" }}>CVSS</th>
+      </tr>
+    </thead>
+  );
+}
 
 export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
   ({ data }, ref) => {
     const { project, scanJobInfo, findings, kpi, compliance } = data;
+    const indexedFindings = useMemo(
+      () => findings.map((finding, index) => ({ finding, index })),
+      [findings],
+    );
+    const estimatedDetailedFindingPages = useMemo(
+      () => findings.length > 0
+        ? chunkByEstimatedHeight(
+            indexedFindings,
+            DETAILED_FINDINGS_AVAILABLE_HEIGHT,
+            estimateDetailedFindingHeight,
+            MAX_DETAILED_FINDINGS_PER_PAGE,
+          )
+        : [],
+      [findings.length, indexedFindings],
+    );
+    const estimatedVulnerabilityPages = useMemo(
+      () => findings.length > 0
+        ? chunkByEstimatedHeight(
+            indexedFindings,
+            VULNERABILITY_TABLE_AVAILABLE_HEIGHT,
+            estimateVulnerabilityRowHeight,
+          )
+        : [],
+      [findings.length, indexedFindings],
+    );
+    const detailedMeasureRef = useRef<HTMLDivElement>(null);
+    const [measuredDetailedFindingPages, setMeasuredDetailedFindingPages] = useState<IndexedFinding[][] | null>(null);
+    const [measuredVulnerabilityPages, setMeasuredVulnerabilityPages] = useState<IndexedFinding[][] | null>(null);
+
+    useLayoutEffect(() => {
+      if (indexedFindings.length === 0) {
+        setMeasuredDetailedFindingPages([]);
+        setMeasuredVulnerabilityPages([]);
+        return;
+      }
+
+      const measurementArea = detailedMeasureRef.current;
+      if (!measurementArea) return;
+
+      const cards = Array.from(measurementArea.querySelectorAll<HTMLElement>("[data-pdf-finding-card='true']"));
+      const rows = Array.from(measurementArea.querySelectorAll<HTMLElement>("[data-pdf-vulnerability-row='true']"));
+      if (cards.length !== indexedFindings.length || rows.length !== indexedFindings.length) return;
+
+      setMeasuredDetailedFindingPages(
+        chunkByMeasuredHeight(
+          indexedFindings,
+          cards.map((card) => card.getBoundingClientRect().height),
+          DETAILED_FINDINGS_AVAILABLE_HEIGHT,
+          DETAILED_FINDING_CARD_GAP,
+        ),
+      );
+      setMeasuredVulnerabilityPages(
+        chunkByMeasuredHeight(
+          indexedFindings,
+          rows.map((row) => row.getBoundingClientRect().height),
+          VULNERABILITY_TABLE_AVAILABLE_HEIGHT,
+        ),
+      );
+    }, [indexedFindings]);
+
     if (!scanJobInfo) return null;
 
     const reportDate = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -297,22 +478,9 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
     const targetList = targets.join(", ") || "N/A";
     const targetSubject = targets.length > 1 ? reportProfile.targetPlural : reportProfile.targetSingular;
     const targetScope = targets.length > 1 ? "assessed scope" : reportProfile.targetSingular;
-    const indexedFindings = findings.map((finding, index) => ({ finding, index }));
-    const vulnerabilityPages = findings.length > 0
-      ? chunkByEstimatedHeight(
-          indexedFindings,
-          VULNERABILITY_TABLE_AVAILABLE_HEIGHT,
-          estimateVulnerabilityRowHeight,
-        )
-      : [];
-    const detailedFindingPages = findings.length > 0
-      ? chunkByEstimatedHeight(
-          indexedFindings,
-          DETAILED_FINDINGS_AVAILABLE_HEIGHT,
-          estimateDetailedFindingHeight,
-          MAX_DETAILED_FINDINGS_PER_PAGE,
-        )
-      : [];
+    const vulnerabilityPages = measuredVulnerabilityPages ?? estimatedVulnerabilityPages;
+    const detailedFindingPages = measuredDetailedFindingPages ?? estimatedDetailedFindingPages;
+    const isPaginationReady = findings.length === 0 || (measuredDetailedFindingPages !== null && measuredVulnerabilityPages !== null);
     const recommendationItems = SEVERITY_KEYS
       .filter((sev) => sev !== "INFO")
       .flatMap((sev) => indexedFindings.filter(({ finding }) => finding.severity === sev && finding.status !== "RESOLVED"));
@@ -326,7 +494,22 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
       : [];
 
     return (
-      <div ref={ref} style={S.page}>
+      <div ref={ref} style={{ ...S.page, position: "relative" }} data-pdf-ready={isPaginationReady ? "true" : "false"}>
+        {findings.length > 0 && (
+          <div ref={detailedMeasureRef} style={S.measureArea} aria-hidden="true">
+            <table style={S.table}>
+              <VulnerabilityTableHead />
+              <tbody>
+                {indexedFindings.map((item) => (
+                  <VulnerabilityTableRow key={`measure-row-${item.finding.id}`} item={item} />
+                ))}
+              </tbody>
+            </table>
+            {indexedFindings.map((item) => (
+              <DetailedFindingCard key={`measure-${item.finding.id}`} item={item} />
+            ))}
+          </div>
+        )}
 
         {/* ════════════ PAGE 1: COVER ════════════ */}
         <div data-pdf-page="true" style={{
@@ -483,24 +666,10 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
             <p>No vulnerabilities were identified during this scan.</p>
           ) : (
             <table style={S.table}>
-              <thead>
-                <tr>
-                  <th style={{ ...S.th, ...S.numberTh }}>#</th>
-                  <th style={S.th}>Vulnerability</th>
-                  <th style={{ ...S.th, width: "90px" }}>Severity</th>
-                  <th style={S.th}>Target</th>
-                  <th style={{ ...S.th, width: "50px", textAlign: "right" }}>CVSS</th>
-                </tr>
-              </thead>
+              <VulnerabilityTableHead />
               <tbody>
-                {(vulnerabilityPages[0] ?? []).map(({ finding: f, index }) => (
-                  <tr key={f.id}>
-                    <td style={{ ...S.td, ...S.numberTd, color: "#94A3B8" }}>{index + 1}</td>
-                    <td style={{ ...S.td, fontWeight: 600 }}>{f.title}</td>
-                    <td style={S.td}><span style={S.badge(f.severity)}>{f.severity}</span></td>
-                    <td style={{ ...S.td, fontFamily: "monospace", fontSize: "11px" }}>{f.target}</td>
-                    <td style={{ ...S.td, textAlign: "right", fontWeight: 700 }}>{f.cvss ?? "—"}</td>
-                  </tr>
+                {(vulnerabilityPages[0] ?? []).map((item) => (
+                  <VulnerabilityTableRow key={item.finding.id} item={item} />
                 ))}
               </tbody>
             </table>
@@ -516,24 +685,10 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
               <h2 style={S.h2}>Vulnerabilities Identified (Continued)</h2>
 
               <table style={S.table}>
-                <thead>
-                  <tr>
-                    <th style={{ ...S.th, ...S.numberTh }}>#</th>
-                    <th style={S.th}>Vulnerability</th>
-                    <th style={{ ...S.th, width: "90px" }}>Severity</th>
-                    <th style={S.th}>Target</th>
-                    <th style={{ ...S.th, width: "50px", textAlign: "right" }}>CVSS</th>
-                  </tr>
-                </thead>
+                <VulnerabilityTableHead />
                 <tbody>
-                  {pageFindings.map(({ finding: f, index }) => (
-                    <tr key={f.id}>
-                      <td style={{ ...S.td, ...S.numberTd, color: "#94A3B8" }}>{index + 1}</td>
-                      <td style={{ ...S.td, fontWeight: 600 }}>{f.title}</td>
-                      <td style={S.td}><span style={S.badge(f.severity)}>{f.severity}</span></td>
-                      <td style={{ ...S.td, fontFamily: "monospace", fontSize: "11px" }}>{f.target}</td>
-                      <td style={{ ...S.td, textAlign: "right", fontWeight: 700 }}>{f.cvss ?? "-"}</td>
-                    </tr>
+                  {pageFindings.map((item) => (
+                    <VulnerabilityTableRow key={item.finding.id} item={item} />
                   ))}
                 </tbody>
               </table>
@@ -547,59 +702,9 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
               Detailed Findings{pageIndex > 0 ? " (Continued)" : ""}
             </h2>
 
-            {pageFindings.map(({ finding: f, index }) => {
-              const findingIndex = index;
-
-              return (
-                <div key={f.id} style={{
-                  marginBottom: "28px",
-                  border: "1px solid #D9DEE8",
-                  borderRadius: "8px",
-                  breakInside: "auto",
-                  pageBreakInside: "auto",
-                  overflow: "visible",
-                }}>
-                  {/* Finding header */}
-                  <div style={{
-                    padding: "14px 18px",
-                    backgroundColor: "#F1F5F9",
-                    borderBottom: "1px solid #D9DEE8",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}>
-                    <span style={{ fontWeight: 800, fontSize: "14px" }}>
-                      {findingIndex + 1}. {f.title}
-                    </span>
-                    <span style={S.badge(f.severity)}>{f.severity}</span>
-                  </div>
-
-                  {/* Finding body */}
-                  <div style={{ padding: "18px" }}>
-                    <table style={{ ...S.table, marginBottom: "14px", fontSize: "12px" }}>
-                      <tbody>
-                        <tr><td style={{ width: "100px", fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Target:</td><td style={{ padding: "4px 0", fontFamily: "monospace" }}>{f.target}</td></tr>
-                        <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVSS:</td><td style={{ padding: "4px 0" }}>{f.cvss ?? "N/A"}</td></tr>
-                        <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>Status:</td><td style={{ padding: "4px 0" }}>{f.status}</td></tr>
-                        {formatCves(f.cves) && (
-                          <tr><td style={{ fontWeight: 600, color: "#64748B", padding: "4px 0" }}>CVEs:</td><td style={{ padding: "4px 0", fontFamily: "monospace", fontSize: "11px" }}>{formatCves(f.cves)}</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-
-                    <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#0066FF", margin: "12px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Description</h4>
-                    <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
-                      {f.description || "No description provided."}
-                    </div>
-
-                    <h4 style={{ fontSize: "12px", fontWeight: 800, color: "#10B981", margin: "14px 0 6px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remediation</h4>
-                    <div style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
-                      {f.remediation || "No remediation guidance provided."}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {pageFindings.map((item) => (
+              <DetailedFindingCard key={item.finding.id} item={item} />
+            ))}
           </div>
         ))}
 
@@ -671,6 +776,7 @@ export const PdfToolReport = forwardRef<HTMLDivElement, PdfToolReportProps>(
               pageItems.map(({ finding: f, index }) => (
                 <div
                   key={`recommendation-${f.id}`}
+                  data-pdf-avoid-break="true"
                   style={{
                     padding: "12px 14px",
                     marginBottom: "12px",

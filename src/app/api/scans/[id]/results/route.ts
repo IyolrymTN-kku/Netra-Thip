@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { ResultsIngestInput } from "@/lib/findings/schema";
+import {
+  getPreferredDescription,
+  getPreferredRemediation,
+  normalizeToolCvesForStorage,
+} from "@/lib/findings/cve-details";
 import { SIGNATURE_HEADER, verifySignature } from "@/lib/scans/signing";
 
 export const runtime = "nodejs";
@@ -78,21 +83,34 @@ export async function POST(
       ? findings.filter((finding) => !existingTargets.has(finding.target))
       : findings;
 
+    const toolKey = scanJob.toolName.toLowerCase();
+    const supportsRichCveDetails = toolKey === "sirius" || toolKey === "vuls";
+
     const inserted = await tx.finding.createMany({
-      data: findingsToInsert.map((f) => ({
-        projectId: scanJob.projectId,
-        scanJobId: scanJob.id,
-        title: f.title,
-        severity: f.severity,
-        description: f.description,
-        remediation: f.remediation,
-        target: f.target,
-        cvss: f.cvss ?? null,
-        cves: f.cves
-          ? (f.cves as unknown as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
-        status: f.status ?? "OPEN",
-      })),
+      data: findingsToInsert.map((f) => {
+        const cves = supportsRichCveDetails
+          ? normalizeToolCvesForStorage(f)
+          : f.cves;
+
+        return {
+          projectId: scanJob.projectId,
+          scanJobId: scanJob.id,
+          title: f.title,
+          severity: f.severity,
+          description: supportsRichCveDetails
+            ? getPreferredDescription(f, scanJob.toolName).slice(0, 20_000)
+            : f.description,
+          remediation: supportsRichCveDetails
+            ? getPreferredRemediation(f, scanJob.toolName).slice(0, 20_000)
+            : f.remediation,
+          target: f.target,
+          cvss: f.cvss ?? null,
+          cves: cves
+            ? (cves as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          status: f.status ?? "OPEN",
+        };
+      }),
     });
     const updated = acceptsLateVulsTargets
       ? scanJob

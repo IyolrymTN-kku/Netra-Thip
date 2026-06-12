@@ -9,7 +9,7 @@ import { TopTargetsTable } from "./TopTargetsTable";
 import { PdfReportTemplate } from "./PdfReportTemplate";
 import { PdfToolReport } from "./PdfToolReport";
 import type { ReportExportData, ReportsSummaryData } from "./types";
-import { PDF_PAGE_WIDTH_PX, PDF_PAGE_HEIGHT_PX } from "./pdfLayout";
+import { PDF_PAGE_HEIGHT_MM, PDF_PAGE_HEIGHT_PX, PDF_PAGE_WIDTH_MM, PDF_PAGE_WIDTH_PX } from "./pdfLayout";
 
 function formatPdfToolName(toolName: string): string {
   return toolName.trim().replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "") || "scan";
@@ -17,6 +17,15 @@ function formatPdfToolName(toolName: string): string {
 
 const PDF_RENDER_SCALE = 2;
 const PDF_PAGE_SELECTOR = "[data-pdf-page='true']";
+const PDF_READY_PENDING_SELECTOR = "[data-pdf-ready='false']";
+const PDF_AVOID_BREAK_SELECTOR = "[data-pdf-avoid-break='true']";
+const CANVAS_PAGE_OVERFLOW_TOLERANCE_PX = 2;
+const CANVAS_MIN_SAFE_SLICE_RATIO = 0.08;
+
+interface PdfBreakRange {
+  top: number;
+  bottom: number;
+}
 
 interface JsPdfLike {
   addImage(
@@ -40,15 +49,33 @@ function addCanvasToPdf(
   pageWidthMm: number,
   pageHeightMm: number,
   startsNewPdf: boolean,
+  breakRanges: PdfBreakRange[] = [],
 ): boolean {
-  const sliceHeightPx = Math.floor((pageHeightMm / pageWidthMm) * canvas.width);
+  const sliceHeightPx = Math.round((PDF_PAGE_HEIGHT_PX / PDF_PAGE_WIDTH_PX) * canvas.width);
+  const minSafeSliceHeightPx = sliceHeightPx * CANVAS_MIN_SAFE_SLICE_RATIO;
   let offsetPx = 0;
   let isFirstSlice = startsNewPdf;
 
   while (offsetPx < canvas.height) {
+    const remainingHeightPx = canvas.height - offsetPx;
+    if (remainingHeightPx <= CANVAS_PAGE_OVERFLOW_TOLERANCE_PX) break;
+
     if (!isFirstSlice) pdf.addPage();
 
-    const currentSliceHeight = Math.min(sliceHeightPx, canvas.height - offsetPx);
+    let currentSliceHeight = Math.min(sliceHeightPx, remainingHeightPx);
+    const proposedCutPx = offsetPx + currentSliceHeight;
+    const blockingRange = breakRanges.find(
+      (range) =>
+        range.top < proposedCutPx &&
+        range.bottom > proposedCutPx &&
+        range.top - offsetPx > minSafeSliceHeightPx &&
+        range.top - offsetPx < currentSliceHeight,
+    );
+
+    if (blockingRange) {
+      currentSliceHeight = Math.floor(blockingRange.top - offsetPx);
+    }
+
     const sliceCanvas = document.createElement("canvas");
     sliceCanvas.width = canvas.width;
     sliceCanvas.height = currentSliceHeight;
@@ -70,7 +97,9 @@ function addCanvasToPdf(
       currentSliceHeight,
     );
 
-    const imageHeightMm = (currentSliceHeight * pageWidthMm) / canvas.width;
+    const imageHeightMm = currentSliceHeight >= sliceHeightPx - CANVAS_PAGE_OVERFLOW_TOLERANCE_PX
+      ? pageHeightMm
+      : (currentSliceHeight / sliceHeightPx) * pageHeightMm;
     pdf.addImage(
       sliceCanvas.toDataURL("image/png"),
       "PNG",
@@ -91,27 +120,33 @@ function addCanvasToPdf(
   return false;
 }
 
-function addA4CanvasPageToPdf(
-  pdf: JsPdfLike,
-  canvas: HTMLCanvasElement,
-  pageWidthMm: number,
-  pageHeightMm: number,
-  startsNewPdf: boolean,
-): boolean {
-  if (!startsNewPdf) pdf.addPage();
+function getAvoidBreakRanges(target: HTMLElement, canvas: HTMLCanvasElement, renderHeightPx: number): PdfBreakRange[] {
+  const targetRect = target.getBoundingClientRect();
+  const scaleY = canvas.height / renderHeightPx;
 
-  pdf.addImage(
-    canvas.toDataURL("image/png"),
-    "PNG",
-    0,
-    0,
-    pageWidthMm,
-    pageHeightMm,
-    undefined,
-    "FAST",
-  );
+  return Array.from(target.querySelectorAll<HTMLElement>(PDF_AVOID_BREAK_SELECTOR))
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
 
-  return false;
+      return {
+        top: Math.max(0, Math.floor((rect.top - targetRect.top) * scaleY)),
+        bottom: Math.min(canvas.height, Math.ceil((rect.bottom - targetRect.top) * scaleY)),
+      };
+    })
+    .filter((range) => range.bottom - range.top > CANVAS_PAGE_OVERFLOW_TOLERANCE_PX)
+    .sort((a, b) => a.top - b.top);
+}
+
+function isPdfReady(source: HTMLElement): boolean {
+  return !source.matches(PDF_READY_PENDING_SELECTOR) && !source.querySelector(PDF_READY_PENDING_SELECTOR);
+}
+
+async function waitForPdfReady(source: HTMLElement, timeoutMs = 3000): Promise<void> {
+  const start = performance.now();
+
+  while (!isPdfReady(source) && performance.now() - start < timeoutMs) {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
 }
 
 async function exportReportPdf(source: HTMLElement, filename: string): Promise<void> {
@@ -121,10 +156,11 @@ async function exportReportPdf(source: HTMLElement, filename: string): Promise<v
   ]);
 
   await document.fonts?.ready;
+  await waitForPdfReady(source);
 
   const pdf: JsPdfLike = new jsPDF({
     unit: "mm",
-    format: "a4",
+    format: [PDF_PAGE_WIDTH_MM, PDF_PAGE_HEIGHT_MM],
     orientation: "portrait",
     compress: true,
   });
@@ -136,20 +172,26 @@ async function exportReportPdf(source: HTMLElement, filename: string): Promise<v
 
   let startsNewPdf = true;
   for (const target of renderTargets) {
+    const renderWidthPx = usesPreparedA4Pages
+      ? PDF_PAGE_WIDTH_PX
+      : Math.max(source.scrollWidth, target.scrollWidth, PDF_PAGE_WIDTH_PX);
+    const renderHeightPx = usesPreparedA4Pages
+      ? Math.max(target.scrollHeight, target.offsetHeight, PDF_PAGE_HEIGHT_PX)
+      : Math.max(target.scrollHeight, PDF_PAGE_HEIGHT_PX);
     const canvas = await html2canvas(target, {
       scale: PDF_RENDER_SCALE,
       useCORS: true,
       scrollY: 0,
       backgroundColor: "#FFFFFF",
-      windowWidth: Math.max(source.scrollWidth, target.scrollWidth, PDF_PAGE_WIDTH_PX),
-      windowHeight: Math.max(target.scrollHeight, PDF_PAGE_HEIGHT_PX),
-      ...(usesPreparedA4Pages ? { width: PDF_PAGE_WIDTH_PX, height: PDF_PAGE_HEIGHT_PX } : {}),
+      windowWidth: renderWidthPx,
+      windowHeight: renderHeightPx,
+      width: renderWidthPx,
+      height: renderHeightPx,
       logging: false,
     });
+    const breakRanges = getAvoidBreakRanges(target, canvas, renderHeightPx);
 
-    startsNewPdf = usesPreparedA4Pages
-      ? addA4CanvasPageToPdf(pdf, canvas, pageWidthMm, pageHeightMm, startsNewPdf)
-      : addCanvasToPdf(pdf, canvas, pageWidthMm, pageHeightMm, startsNewPdf);
+    startsNewPdf = addCanvasToPdf(pdf, canvas, pageWidthMm, pageHeightMm, startsNewPdf, breakRanges);
   }
 
   pdf.save(filename);
