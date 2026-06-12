@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { JobStatus } from "@prisma/client";
+import { JobStatus, Prisma } from "@prisma/client";
 import { logAudit } from "@/lib/audit/audit";
 
 export const runtime = "nodejs";
@@ -38,7 +38,7 @@ export async function GET() {
         data: {
           status: JobStatus.FAILED,
           completedAt: new Date(),
-          parameters: merged as Record<string, unknown>
+          parameters: merged as Prisma.InputJsonObject
         }
       });
 
