@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ResultsHeader } from "@/components/results/ResultsHeader";
 import { ResultsView } from "@/components/results/ResultsView";
 import { ScanStatusPoller } from "@/components/results/ScanStatusPoller";
+import { buildMetloEndpointEntries } from "@/components/results/metlo-display";
 
 interface ScanPageProps {
   params: Promise<{ id: string }>;
@@ -38,6 +39,10 @@ export default async function ScanResultsPage({ params }: ScanPageProps) {
     ...f,
     scanJob: { toolName: scanJob.toolName },
   }));
+  const isMetloScan = scanJob.toolName.toLowerCase() === "metlo";
+  const displayCount = isMetloScan
+    ? buildMetloEndpointEntries(rows).length
+    : findings.length;
 
   const isLive =
     scanJob.status === "PENDING" || scanJob.status === "RUNNING";
@@ -50,7 +55,11 @@ export default async function ScanResultsPage({ params }: ScanPageProps) {
           initialStatus={scanJob.status}
         />
       )}
-      <ResultsHeader scanJob={scanJob} findingCount={findings.length} />
+      <ResultsHeader
+        scanJob={scanJob}
+        findingCount={displayCount}
+        countLabel={isMetloScan ? "endpoints" : "findings"}
+      />
       <ResultsView findings={rows} mode="scan" />
     </div>
   );

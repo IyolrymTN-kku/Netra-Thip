@@ -7,6 +7,7 @@ interface ResultsHeaderProps {
     "id" | "toolName" | "status" | "startedAt" | "completedAt" | "createdAt" | "parameters"
   >;
   findingCount: number;
+  countLabel?: string;
 }
 
 interface BannerMeta {
@@ -65,7 +66,11 @@ function formatRelative(d: Date): string {
   return `${days}d ago`;
 }
 
-export function ResultsHeader({ scanJob, findingCount }: ResultsHeaderProps) {
+export function ResultsHeader({
+  scanJob,
+  findingCount,
+  countLabel = "findings",
+}: ResultsHeaderProps) {
   const banner = BANNER[scanJob.status];
   const finishedAt = scanJob.completedAt ?? null;
   const startedAt = scanJob.startedAt ?? null;
@@ -171,7 +176,7 @@ export function ResultsHeader({ scanJob, findingCount }: ResultsHeaderProps) {
               </span>
               <span>·</span>
               <span>
-                <span className="mono tnum">{findingCount}</span> findings
+                <span className="mono tnum">{findingCount}</span> {countLabel}
               </span>
             </div>
           </div>

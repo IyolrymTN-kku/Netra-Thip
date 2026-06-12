@@ -7,6 +7,7 @@ import {
   getPreferredRemediation,
   normalizeToolCvesForStorage,
 } from "@/lib/findings/cve-details";
+import { getMetloFindingDates } from "@/lib/findings/metlo-ingest";
 import { SIGNATURE_HEADER, verifySignature } from "@/lib/scans/signing";
 
 export const runtime = "nodejs";
@@ -91,6 +92,8 @@ export async function POST(
         const cves = supportsRichCveDetails
           ? normalizeToolCvesForStorage(f)
           : f.cves;
+        const metloDates =
+          toolKey === "metlo" ? getMetloFindingDates(f) : {};
 
         return {
           projectId: scanJob.projectId,
@@ -109,6 +112,7 @@ export async function POST(
             ? (cves as unknown as Prisma.InputJsonValue)
             : Prisma.JsonNull,
           status: f.status ?? "OPEN",
+          ...metloDates,
         };
       }),
     });
