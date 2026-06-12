@@ -72,7 +72,7 @@ export function ResultsHeader({ scanJob, findingCount }: ResultsHeaderProps) {
   
   let label = banner.label;
   if (scanJob.status === "FAILED") {
-    const params = (scanJob.parameters || {}) as Record<string, any>;
+    const params = (scanJob.parameters || {}) as Record<string, unknown>;
     if (params._failureReason) {
       // Remove n8n's auto-appended "[line XYZ]" from the error message
       const cleanReason = String(params._failureReason).replace(/\s*\[line\s+\d+\]\s*$/i, "");

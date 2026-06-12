@@ -23,9 +23,17 @@ function initials(input: string): string {
     .join("");
 }
 
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const bellRef = useRef<HTMLDivElement>(null);
   const previousUnreadCount = useRef(-1);
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
@@ -46,7 +54,7 @@ function NotificationBell() {
         .then((r) => r.json())
         .then((d) => {
           if (d.notifications) {
-            const unread = d.notifications.filter((n: any) => !n.isRead).length;
+            const unread = d.notifications.filter((n: AppNotification) => !n.isRead).length;
             if (previousUnreadCount.current !== -1 && unread > previousUnreadCount.current) {
               const newest = d.notifications[0];
               if (newest && !newest.isRead) {
@@ -57,7 +65,7 @@ function NotificationBell() {
                   const audio = new Audio("https://actions.google.com/sounds/v1/cartoon/pop.ogg");
                   audio.volume = 0.5;
                   audio.play().catch(() => {});
-                } catch(e) {}
+                } catch {}
                 setTimeout(() => setToast(null), 5000);
               }
             }

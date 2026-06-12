@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit/audit";
 
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
     // Auth check if needed, but this is an internal watchdog. 
     // You might want to secure this with a secret token in production.
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
         data: {
           status: JobStatus.FAILED,
           completedAt: new Date(),
-          parameters: merged as any
+          parameters: merged as Record<string, unknown>
         }
       });
 
