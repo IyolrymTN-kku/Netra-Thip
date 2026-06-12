@@ -1,8 +1,10 @@
 name: CI Quality Gate
 
 on:
+  push:
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
 
 jobs:
   build-and-test:
@@ -14,13 +16,12 @@ jobs:
         with:
           node-version: 20
       - name: Install dependencies
-        run: npm i -g pnpm && pnpm install
+        run: npm i -g pnpm && pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
-        continue-on-error: true
+      - name: Typecheck
+        run: pnpm typecheck
       - name: Test
         run: pnpm test
-        continue-on-error: true
       - name: Build
         run: pnpm build
-        continue-on-error: true
