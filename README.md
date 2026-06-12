@@ -128,9 +128,8 @@ npx prisma db seed
 ```
 
 ```bash
-npx prisma studio
+npx prisma studio //check localhost:5555 database admin web-ui
 ```
-//check localhost:5555 database admin web-ui
 
 This reads `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`, hashes the password with bcrypt (cost 12), and upserts an `ADMIN` user. The script is idempotent.
 

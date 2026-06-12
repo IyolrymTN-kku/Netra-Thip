@@ -6,11 +6,6 @@ import { ResultsKpi } from "./ResultsKpi";
 import { ResultsDonut } from "./ResultsDonut";
 import { FindingsTable } from "./FindingsTable";
 import { FindingDrawer } from "./FindingDrawer";
-import { MetloEndpointsTable } from "./MetloEndpointsTable";
-import {
-  buildMetloEndpointEntries,
-  isMetloFinding,
-} from "./metlo-display";
 import type { FindingRow } from "./types";
 
 interface ResultsViewProps {
@@ -18,7 +13,7 @@ interface ResultsViewProps {
   mode: "global" | "scan";
 }
 
-const SEVERITY_KEYS: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+const SEVERITY_KEYS: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
 const SEV_COLOR: Record<Severity, string> = {
   CRITICAL: "var(--sev-critical)",
@@ -31,16 +26,11 @@ const SEV_COLOR: Record<Severity, string> = {
 export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const findings = rawFindings;
-  const isMetloOnly =
-    findings.length > 0 && findings.every((finding) => isMetloFinding(finding));
-  const metloEndpointEntries = useMemo(
-    () => (isMetloOnly ? buildMetloEndpointEntries(findings) : []),
-    [findings, isMetloOnly],
-  );
-  const displayFindings = isMetloOnly
-    ? metloEndpointEntries.map((entry) => entry.displayFinding)
-    : findings;
+  const findings = useMemo(() => {
+    return rawFindings.map((f) =>
+      f.severity === "INFO" ? { ...f, severity: "LOW" as Severity } : f
+    );
+  }, [rawFindings]);
 
   const counts = useMemo(() => {
     const c: Record<Severity, number> = {
@@ -50,20 +40,19 @@ export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
       LOW: 0,
       INFO: 0,
     };
-    for (const f of displayFindings) c[f.severity]++;
+    for (const f of findings) c[f.severity]++;
     return c;
-  }, [displayFindings]);
+  }, [findings]);
 
-  const total = displayFindings.length;
-  const resultEntity = isMetloOnly ? "Endpoints" : "Findings";
+  const total = findings.length;
   const donutData = SEVERITY_KEYS.map((k) => ({
     color: SEV_COLOR[k],
     value: counts[k],
   }));
 
   const selected = useMemo(
-    () => displayFindings.find((f) => f.id === selectedId) ?? null,
-    [displayFindings, selectedId],
+    () => findings.find((f) => f.id === selectedId) ?? null,
+    [findings, selectedId],
   );
 
   return (
@@ -82,11 +71,10 @@ export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
               fontFamily: "var(--font-thai)",
             }}
           >
-            {resultEntity}
+            Findings
           </h1>
           <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
-            <span className="mono tnum">{total}</span> total{" "}
-            {resultEntity.toLowerCase()} ·{" "}
+            <span className="mono tnum">{total}</span> total ·{" "}
             <span style={{ color: "var(--sev-critical)" }}>
               <span className="mono tnum">{counts.CRITICAL}</span> critical
             </span>{" "}
@@ -102,7 +90,7 @@ export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
         className="nt-stagger"
         style={{
           display: "grid",
-          gridTemplateColumns: "1.2fr repeat(6, 1fr)",
+          gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr 1fr",
           gap: 14,
         }}
       >
@@ -171,7 +159,7 @@ export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
           </div>
         </div>
         <ResultsKpi
-          label={isMetloOnly ? "Total Endpoints" : "Total Findings"}
+          label="Total Findings"
           value={total}
           color="var(--nt-blue)"
           icon="bug"
@@ -200,27 +188,13 @@ export function ResultsView({ findings: rawFindings, mode }: ResultsViewProps) {
           color="var(--ok)"
           icon="check"
         />
-        <ResultsKpi
-          label="Info"
-          value={counts.INFO}
-          color="var(--sev-info)"
-          icon="info"
-        />
       </section>
 
-      {isMetloOnly ? (
-        <MetloEndpointsTable
-          entries={metloEndpointEntries}
-          selectedId={selected?.id ?? null}
-          onSelect={(r) => setSelectedId(r.id)}
-        />
-      ) : (
-        <FindingsTable
-          rows={findings}
-          selectedId={selected?.id ?? null}
-          onSelect={(r) => setSelectedId(r.id)}
-        />
-      )}
+      <FindingsTable
+        rows={findings}
+        selectedId={selected?.id ?? null}
+        onSelect={(r) => setSelectedId(r.id)}
+      />
 
       {selected && (
         <FindingDrawer

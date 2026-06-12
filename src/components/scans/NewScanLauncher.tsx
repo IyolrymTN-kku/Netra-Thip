@@ -6,14 +6,9 @@ import { Icon } from "@/components/icons/Icon";
 import { TOOLS, type ToolDef } from "@/lib/tools/registry";
 import { DynamicForm, type FileMeta, type FormValues } from "./DynamicForm";
 import { ToolCard } from "./ToolCard";
-import {
-  getAiProviderMetadata,
-  type SavedApiKeyConfig,
-} from "@/lib/settings/types";
 
 interface NewScanLauncherProps {
   projectId: string;
-  savedConfigs?: SavedApiKeyConfig[];
 }
 
 type AssetType = "DOMAIN" | "IP" | "URL";
@@ -58,7 +53,7 @@ function buildParameters(
   fileRefs: Record<string, UploadedFileRef>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-
+  
   // วนลูปตาม Field ที่ Tool กำหนดไว้
   for (const field of tool.fields) {
     if (field.type === "file") continue; // File จัดการแยกต่างหากแล้ว
@@ -75,7 +70,7 @@ function buildParameters(
   for (const [fieldId, ref] of Object.entries(fileRefs)) {
     out[fieldId] = ref;
   }
-
+  
   return out;
 }
 
@@ -109,7 +104,7 @@ async function uploadFileFields(
   return refs;
 }
 
-export function NewScanLauncher({ projectId, savedConfigs = [] }: NewScanLauncherProps) {
+export function NewScanLauncher({ projectId }: NewScanLauncherProps) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string>(TOOLS[0].id);
   const [valuesByTool, setValuesByTool] = useState<Record<string, FormValues>>(
@@ -132,36 +127,9 @@ export function NewScanLauncher({ projectId, savedConfigs = [] }: NewScanLaunche
     }));
   };
 
-  const configuredFields = useMemo(() => {
-    const configured: Record<string, string> = {};
-    const aiProvider = String(values.ai_provider || "openai");
-    const aiConfig = savedConfigs.find((c) => c.provider === aiProvider);
-    const aiMetadata = getAiProviderMetadata(aiConfig?.metadata);
-
-    for (const f of tool.fields) {
-      if (f.id === "ai_api_key" && aiConfig) {
-        configured[f.id] = "API Key";
-      } else if ((f.id === "model" || f.id === "ai_model") && aiMetadata?.model) {
-        configured[f.id] = aiMetadata.model;
-      } else if ((f.id === "base_url" || f.id === "ai_base_url") && aiMetadata?.baseUrl) {
-        configured[f.id] = aiMetadata.baseUrl;
-      } else if (f.type === "secret" && !["model", "base_url", "ai_model", "ai_base_url"].includes(f.id)) {
-        let provider = "";
-        if (f.id.endsWith("_api_key")) provider = f.id.replace("_api_key", "");
-        else provider = `${tool.id}_${f.id}`;
-
-        const saved = savedConfigs.find((c) => c.provider === provider);
-        if (saved) {
-          configured[f.id] = "API Key";
-        }
-      }
-    }
-    return configured;
-  }, [tool, savedConfigs, values.ai_provider]);
-
   const target = pickTargetField(tool);
   const requiredOk = tool.fields
-    .filter((f) => f.required && !configuredFields[f.id])
+    .filter((f) => f.required)
     .every((f) => {
       const v = values[f.id] ?? ("default" in f ? f.default : undefined);
       return v !== undefined && v !== null && v !== "";
@@ -223,7 +191,7 @@ export function NewScanLauncher({ projectId, savedConfigs = [] }: NewScanLaunche
           secrets,    // ส่งเฉพาะ secrets แยกลงกระเป๋าของมันเอง
         }),
       });
-
+      
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as
           | { error?: string }
@@ -402,7 +370,7 @@ export function NewScanLauncher({ projectId, savedConfigs = [] }: NewScanLaunche
           style={{ padding: "22px 24px", overflow: "auto", flex: 1 }}
           key={tool.id + "-form"}
         >
-          <DynamicForm tool={tool} values={values} onChange={setVal} configuredFields={configuredFields} />
+          <DynamicForm tool={tool} values={values} onChange={setVal} />
         </div>
 
         {/* Footer / actions */}

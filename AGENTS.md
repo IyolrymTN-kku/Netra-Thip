@@ -28,7 +28,7 @@ The system categorizes tools into 3 Execution Strategies:
 
 ## 4. Strict Enterprise Security Rules (CRITICAL)
 - **Zero Trust Architecture:** All API endpoints must verify User Session and RBAC (Role-Based Access Control).
-- **BYOK (Bring Your Own Key) Encryption:** AI API Keys (OpenAI, Gemini, Codex) provided by users MUST be encrypted using `AES-256-GCM` before storing in PostgreSQL. The `iv` and `authTag` must be stored alongside the encrypted key.
+- **BYOK (Bring Your Own Key) Encryption:** AI API Keys (OpenAI, Gemini, Codex) provided by users MUST be encrypted using `AES-256-GCM` before storing in PostgreSQL. The `iv` and `authTag` must be stored alongside the encrypted key. 
 - **In-Memory Decryption:** Keys are decrypted ONLY in-memory by the Core Engine when passing them as environment variables to Docker/n8n. NEVER expose raw keys to the Frontend or logs.
 
 ## 5. Data Normalization Standard

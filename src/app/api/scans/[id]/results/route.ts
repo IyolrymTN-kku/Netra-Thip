@@ -2,12 +2,6 @@ import { NextResponse } from "next/server";
 import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { ResultsIngestInput } from "@/lib/findings/schema";
-import {
-  getPreferredDescription,
-  getPreferredRemediation,
-  normalizeToolCvesForStorage,
-} from "@/lib/findings/cve-details";
-import { getMetloFindingDates } from "@/lib/findings/metlo-ingest";
 import { SIGNATURE_HEADER, verifySignature } from "@/lib/scans/signing";
 
 export const runtime = "nodejs";
@@ -47,7 +41,7 @@ export async function POST(
 
   const scanJob = await prisma.scanJob.findUnique({
     where: { id: scanJobId },
-    select: { id: true, projectId: true, toolName: true, status: true },
+    select: { id: true, projectId: true, status: true },
   });
   if (!scanJob) {
     return NextResponse.json(
@@ -55,79 +49,35 @@ export async function POST(
       { status: 404 },
     );
   }
-  const acceptsLateVulsTargets =
-    scanJob.status === JobStatus.COMPLETED &&
-    scanJob.toolName.toLowerCase() === "vuls";
-  if (TERMINAL.has(scanJob.status) && !acceptsLateVulsTargets) {
+  if (TERMINAL.has(scanJob.status)) {
     return NextResponse.json(
       { error: `job already ${scanJob.status}` },
       { status: 409 },
     );
   }
 
-  // Initial deliveries complete the job. A later Vuls delivery may append a
-  // previously missing target without duplicating targets already persisted.
+  // Atomic: bulk-insert findings + flip status. Either both land or neither —
+  // critical for replay protection if n8n retries.
   const result = await prisma.$transaction(async (tx) => {
-    const existingTargets = acceptsLateVulsTargets
-      ? new Set(
-          (
-            await tx.finding.findMany({
-              where: { scanJobId: scanJob.id },
-              distinct: ["target"],
-              select: { target: true },
-            })
-          ).map((finding) => finding.target),
-        )
-      : new Set<string>();
-
-    const findingsToInsert = acceptsLateVulsTargets
-      ? findings.filter((finding) => !existingTargets.has(finding.target))
-      : findings;
-
-    const toolKey = scanJob.toolName.toLowerCase();
-    const supportsRichCveDetails = toolKey === "sirius" || toolKey === "vuls";
-
     const inserted = await tx.finding.createMany({
-      data: findingsToInsert.map((f) => {
-        const cves = supportsRichCveDetails
-          ? normalizeToolCvesForStorage(f)
-          : f.cves;
-        const metloDates =
-          toolKey === "metlo" ? getMetloFindingDates(f) : {};
-
-        return {
-          projectId: scanJob.projectId,
-          scanJobId: scanJob.id,
-          title: f.title,
-          severity: f.severity,
-          description: supportsRichCveDetails
-            ? getPreferredDescription(f, scanJob.toolName).slice(0, 20_000)
-            : f.description,
-          remediation: supportsRichCveDetails
-            ? getPreferredRemediation(f, scanJob.toolName).slice(0, 20_000)
-            : f.remediation,
-          target: f.target,
-          cvss: f.cvss ?? null,
-          cves: cves
-            ? (cves as unknown as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
-          status: f.status ?? "OPEN",
-          ...metloDates,
-        };
-      }),
+      data: findings.map((f) => ({
+        projectId: scanJob.projectId,
+        scanJobId: scanJob.id,
+        title: f.title,
+        severity: f.severity,
+        description: f.description,
+        remediation: f.remediation,
+        target: f.target,
+        cvss: f.cvss ?? null,
+        cves: f.cves ? ((f.cves as unknown) as Prisma.InputJsonValue) : Prisma.JsonNull,
+        status: f.status ?? "OPEN",
+      })),
     });
-    const updated = acceptsLateVulsTargets
-      ? scanJob
-      : await tx.scanJob.update({
-          where: { id: scanJob.id },
-          data: { status: JobStatus.COMPLETED, completedAt: new Date() },
-        });
-
-    return {
-      inserted: inserted.count,
-      skipped: findings.length - findingsToInsert.length,
-      scanJob: updated,
-    };
+    const updated = await tx.scanJob.update({
+      where: { id: scanJob.id },
+      data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+    });
+    return { inserted: inserted.count, scanJob: updated };
   });
 
   return NextResponse.json(result, { status: 201 });

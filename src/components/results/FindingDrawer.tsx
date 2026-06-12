@@ -1,25 +1,9 @@
 "use client";
 
-import {
-  useEffect,
-  useOptimistic,
-  useState,
-  useTransition,
-  type ReactNode,
-} from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { FindingStatus } from "@prisma/client";
 import { Icon } from "@/components/icons/Icon";
-import {
-  getCvssMetricDetails,
-  getPreferredDescription,
-  getPrimaryToolCveDetail,
-  getToolCveDetails,
-} from "@/lib/findings/cve-details";
-import {
-  formatMetloLastActive,
-  getMetloEndpointMetadata,
-} from "./metlo-display";
 import { SevBadge } from "./SevBadge";
 import { StatusPill } from "./StatusPill";
 import type { FindingRow } from "./types";
@@ -38,181 +22,6 @@ const TABS: { id: Tab; label: string; sparkle?: boolean }[] = [
 ];
 
 const STATUS_OPTIONS: FindingStatus[] = ["OPEN", "RESOLVED", "IGNORED"];
-const DETAIL_TOOLS = new Set(["sirius", "vuls"]);
-type FindingDetailOverride = Pick<
-  FindingRow,
-  "description" | "remediation" | "cvss" | "cves"
-> & { id: string };
-
-const METRIC_COLORS: Record<"blue" | "green" | "amber" | "red", string> = {
-  blue: "var(--nt-blue)",
-  green: "var(--ok)",
-  amber: "#EAB308",
-  red: "var(--err)",
-};
-
-function hasValue(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function metricTone(value: string): keyof typeof METRIC_COLORS {
-  const normalized = value.toUpperCase();
-  if (["HIGH", "NETWORK", "NONE", "CHANGED"].includes(normalized)) return "red";
-  if (["LOW", "PARTIAL", "LOCAL", "REQUIRED"].includes(normalized)) return "amber";
-  if (["UNCHANGED", "PHYSICAL"].includes(normalized)) return "green";
-  return "blue";
-}
-
-function MetricTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: keyof typeof METRIC_COLORS;
-}) {
-  const color = METRIC_COLORS[tone ?? metricTone(value)];
-  return (
-    <div
-      style={{
-        padding: "10px 12px",
-        borderRadius: 8,
-        background: `color-mix(in oklab, ${color} 8%, var(--surface-2))`,
-        border: `1px solid color-mix(in oklab, ${color} 34%, var(--line))`,
-        minHeight: 54,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.10em",
-          color: "var(--ink-4)",
-          textTransform: "uppercase",
-          marginBottom: 5,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        className="mono"
-        style={{
-          color,
-          fontSize: 12.5,
-          fontWeight: 800,
-          textTransform: "uppercase",
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function DetailHeading({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: 10.5,
-        fontWeight: 700,
-        letterSpacing: "0.12em",
-        color: "var(--ink-4)",
-        textTransform: "uppercase",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function InfoGrid({
-  rows,
-}: {
-  rows: Array<{ label: string; value: string | number | undefined }>;
-}) {
-  const visibleRows = rows.filter((row) => row.value !== undefined && row.value !== "");
-  if (visibleRows.length === 0) return null;
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        gap: 8,
-      }}
-    >
-      {visibleRows.map((row) => (
-        <div
-          key={row.label}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 8,
-            background: "var(--surface-2)",
-            border: "1px solid var(--line)",
-            minHeight: 54,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: "0.10em",
-              color: "var(--ink-4)",
-              textTransform: "uppercase",
-              marginBottom: 5,
-            }}
-          >
-            {row.label}
-          </div>
-          <div
-            className="mono"
-            style={{
-              color: "var(--ink-2)",
-              fontSize: 12,
-              fontWeight: 700,
-              wordBreak: "break-word",
-            }}
-          >
-            {row.value}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function DetailBlock({
-  title,
-  children,
-  mono = false,
-}: {
-  title: string;
-  children: ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <DetailHeading>{title}</DetailHeading>
-      <div
-        className={mono ? "mono" : undefined}
-        style={{
-          padding: "10px 12px",
-          borderRadius: 8,
-          background: "var(--surface-2)",
-          border: "1px solid var(--line)",
-          color: "var(--ink-2)",
-          fontSize: mono ? 11.5 : 12.5,
-          lineHeight: 1.6,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
 
 export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
   const router = useRouter();
@@ -223,88 +32,6 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
   );
   const [pending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [detailOverride, setDetailOverride] =
-    useState<FindingDetailOverride | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const displayFinding =
-    detailOverride?.id === finding.id
-      ? { ...finding, ...detailOverride }
-      : finding;
-  const toolKey = displayFinding.scanJob.toolName.toLowerCase();
-  const showRichDetails = DETAIL_TOOLS.has(toolKey);
-  const cveDetails = showRichDetails ? getToolCveDetails(displayFinding) : [];
-  const primaryDetail = showRichDetails ? getPrimaryToolCveDetail(displayFinding) : null;
-  const cvssMetrics = getCvssMetricDetails(primaryDetail);
-  const displayDescription = showRichDetails
-    ? getPreferredDescription(displayFinding, displayFinding.scanJob.toolName)
-    : displayFinding.description;
-  const showSiriusMetrics = toolKey === "sirius";
-  const showVulsDetails = toolKey === "vuls";
-  const showMetloDetails = toolKey === "metlo";
-  const metloMetadata = showMetloDetails
-    ? getMetloEndpointMetadata(displayFinding)
-    : null;
-  const metloLastActiveAt =
-    metloMetadata?.lastActiveAt ?? new Date(displayFinding.updatedAt);
-  const attackSurface = [
-    { label: "Vector", value: cvssMetrics.attackVector },
-    { label: "Complexity", value: cvssMetrics.attackComplexity },
-    { label: "Privileges", value: cvssMetrics.privilegesRequired },
-    { label: "User Int.", value: cvssMetrics.userInteraction },
-    { label: "Scope", value: cvssMetrics.scope },
-  ].filter((item): item is { label: string; value: string } => hasValue(item.value));
-  const ciaImpact = [
-    { label: "Confidentiality", value: cvssMetrics.confidentiality },
-    { label: "Integrity", value: cvssMetrics.integrity },
-    { label: "Availability", value: cvssMetrics.availability },
-  ].filter((item): item is { label: string; value: string } => hasValue(item.value));
-  const associatedCves = Array.from(
-    new Set(cveDetails.map((detail) => detail.cveId).filter(hasValue)),
-  );
-  const references = Array.from(
-    new Set([
-      ...(primaryDetail?.primarySource ? [primaryDetail.primarySource] : []),
-      ...(primaryDetail?.references ?? []),
-    ]),
-  );
-  const vulsMitigation =
-    primaryDetail?.mitigation ??
-    primaryDetail?.remediation ??
-    displayFinding.remediation;
-
-  useEffect(() => {
-    const currentToolKey = finding.scanJob.toolName.toLowerCase();
-    if (!DETAIL_TOOLS.has(currentToolKey)) {
-      setDetailOverride(null);
-      setDetailLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setDetailLoading(true);
-
-    fetch(`/api/findings/${finding.id}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    })
-      .then(async (res) => {
-        if (!res.ok) return null;
-        return (await res.json().catch(() => null)) as
-          | { finding?: FindingDetailOverride }
-          | null;
-      })
-      .then((body) => {
-        if (cancelled || !body?.finding) return;
-        setDetailOverride(body.finding);
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [finding.id, finding.scanJob.toolName]);
 
   function changeStatus(next: FindingStatus) {
     if (next === optimisticStatus || pending) return;
@@ -366,7 +93,7 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
             gap: 12,
           }}
         >
-          <SevBadge severity={displayFinding.severity} />
+          <SevBadge severity={finding.severity} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
@@ -375,7 +102,7 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                 color: "var(--ink)",
               }}
             >
-              {displayFinding.title}
+              {finding.title}
             </div>
             <div
               style={{
@@ -387,15 +114,15 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                 flexWrap: "wrap",
               }}
             >
-              <span className="mono">{displayFinding.id.slice(-8)}</span>
+              <span className="mono">{finding.id.slice(-8)}</span>
               <span>·</span>
-              <span>{displayFinding.scanJob.toolName}</span>
+              <span>{finding.scanJob.toolName}</span>
               <span>·</span>
-              <span className="mono">{displayFinding.target}</span>
-              {displayFinding.cvss != null && (
+              <span className="mono">{finding.target}</span>
+              {finding.cvss != null && (
                 <>
                   <span>·</span>
-                  <span className="mono">CVSS {displayFinding.cvss.toFixed(1)}</span>
+                  <span className="mono">CVSS {finding.cvss.toFixed(1)}</span>
                 </>
               )}
             </div>
@@ -470,210 +197,16 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                   gap: 12,
                 }}
               >
-                {(!showVulsDetails || !primaryDetail) && (
-                  <div
-                    style={{
-                      fontSize: 12.5,
-                      color: "var(--ink-2)",
-                      lineHeight: 1.55,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {displayDescription || "-- no description provided --"}
-                  </div>
-                )}
-
-                {showMetloDetails && metloMetadata && (
-                  <>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <DetailHeading>Endpoint Overview</DetailHeading>
-                      <InfoGrid
-                        rows={[
-                          { label: "Risk Score", value: metloMetadata.riskScore },
-                          { label: "Authenticated", value: metloMetadata.authenticated },
-                          { label: "Visibility", value: metloMetadata.visibility },
-                          {
-                            label: "Last Used",
-                            value: formatMetloLastActive(metloLastActiveAt),
-                          },
-                          {
-                            label: "Requests",
-                            value: metloMetadata.requestCount ?? undefined,
-                          },
-                          {
-                            label: "PII Fields",
-                            value: metloMetadata.piiFieldCount ?? undefined,
-                          },
-                        ]}
-                      />
-                    </div>
-
-                    {metloMetadata.permissions.length > 0 && (
-                      <DetailBlock title="Permissions" mono>
-                        {metloMetadata.permissions.join("\n")}
-                      </DetailBlock>
-                    )}
-
-                    {metloMetadata.sensitiveData.length > 0 && (
-                      <DetailBlock title="Detected Sensitive Data" mono>
-                        {metloMetadata.sensitiveData.join("\n")}
-                      </DetailBlock>
-                    )}
-                  </>
-                )}
-
-                {showRichDetails && detailLoading && (
-                  <div
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--line)",
-                      color: "var(--ink-3)",
-                      fontSize: 11.5,
-                    }}
-                  >
-                    Loading CVE details...
-                  </div>
-                )}
-
-                {showSiriusMetrics && attackSurface.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <DetailHeading>Attack Surface</DetailHeading>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                        gap: 8,
-                      }}
-                    >
-                      {attackSurface.map((item) => (
-                        <MetricTile
-                          key={item.label}
-                          label={item.label}
-                          value={item.value}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {showSiriusMetrics && ciaImpact.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <DetailHeading>CIA Impact</DetailHeading>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                        gap: 8,
-                      }}
-                    >
-                      {ciaImpact.map((item) => (
-                        <MetricTile
-                          key={item.label}
-                          label={item.label}
-                          value={item.value}
-                          tone={metricTone(item.value)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {showVulsDetails && primaryDetail && (
-                  <>
-                    {associatedCves.length > 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <DetailHeading>Associated CVEs</DetailHeading>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {associatedCves.map((cve) => (
-                            <span
-                              key={cve}
-                              className="mono"
-                              style={{
-                                padding: "6px 8px",
-                                borderRadius: 6,
-                                background: "var(--surface-2)",
-                                border: "1px solid var(--line)",
-                                color: "var(--ink-2)",
-                                fontSize: 11.5,
-                                fontWeight: 700,
-                              }}
-                            >
-                              {cve}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <DetailHeading>CVSS Scores</DetailHeading>
-                      <InfoGrid
-                        rows={[
-                          { label: "Score", value: primaryDetail.cvss ?? displayFinding.cvss ?? undefined },
-                          { label: "Severity", value: primaryDetail.nativeSeverity ?? primaryDetail.severity },
-                          { label: "Source", value: primaryDetail.severitySource },
-                          { label: "CVSS vector", value: primaryDetail.cvssVector },
-                        ]}
-                      />
-                    </div>
-
-                    <DetailBlock title="Summary">
-                      {displayDescription || "-- no summary provided --"}
-                    </DetailBlock>
-
-                    {vulsMitigation && (
-                      <DetailBlock title="Mitigation">
-                        {vulsMitigation}
-                      </DetailBlock>
-                    )}
-
-                    {primaryDetail.affectedPackages && primaryDetail.affectedPackages.length > 0 && (
-                      <DetailBlock title="Affected Packages, Processes" mono>
-                        {primaryDetail.affectedPackages.join("\n")}
-                      </DetailBlock>
-                    )}
-
-                    {references.length > 0 && (
-                      <DetailBlock title="Primary Src" mono>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {references.map((ref) => {
-                            const isUrl = /^https?:\/\//i.test(ref);
-                            return isUrl ? (
-                              <a
-                                key={ref}
-                                href={ref}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mono"
-                                style={{
-                                  color: "var(--nt-blue)",
-                                  fontSize: 11.5,
-                                  wordBreak: "break-all",
-                                }}
-                              >
-                                {ref}
-                              </a>
-                            ) : (
-                              <span
-                                key={ref}
-                                className="mono"
-                                style={{
-                                  color: "var(--ink-2)",
-                                  fontSize: 11.5,
-                                  wordBreak: "break-all",
-                                }}
-                              >
-                                {ref}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </DetailBlock>
-                    )}
-                  </>
-                )}
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--ink-2)",
+                    lineHeight: 1.55,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {finding.description || "— no description provided —"}
+                </div>
               </div>
             )}
 
@@ -685,7 +218,7 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                   gap: 12,
                 }}
               >
-                {displayFinding.remediation ? (
+                {finding.remediation ? (
                   <>
                     <div
                       style={{
@@ -739,7 +272,7 @@ export function FindingDrawer({ finding, onClose }: FindingDrawerProps) {
                         gap: 8,
                       }}
                     >
-                      {displayFinding.remediation
+                      {finding.remediation
                         .split("\n")
                         .filter(Boolean)
                         .map((step, i) => {

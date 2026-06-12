@@ -30,7 +30,6 @@ enum AssetType {
   DOMAIN
   IP
   URL
-  USER
 }
 
 enum Severity {
@@ -47,34 +46,22 @@ enum FindingStatus {
   IGNORED
 }
 
-enum AuditAction {
-  USER_LOGIN
-  USER_LOGIN_FAILED
-  SCAN_CREATED
-  SCAN_COMPLETED
-  FINDING_STATUS_CHANGED
-  API_KEY_CREATED
-  API_KEY_DELETED
-  SETTINGS_UPDATED
-}
-
 // ─────────── Application models ───────────
 
 model User {
-  id            String     @id @default(cuid())
-  email         String     @unique
+  id            String    @id @default(cuid())
+  email         String    @unique
   emailVerified DateTime?
   name          String?
   image         String?
   password      String?
-  role          Role       @default(PENTESTER)
+  role          Role      @default(PENTESTER)
   lastLoginAt   DateTime?
   projects      Project[]
   accounts      Account[]
   sessions      Session[]
-  auditLogs     AuditLog[]
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([email])
 }
@@ -116,7 +103,6 @@ model ApiKey {
   encryptedKey String
   iv           String
   authTag      String
-  metadata     Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -162,22 +148,6 @@ model Finding {
   @@index([projectId, severity])
   @@index([scanJobId, severity])
   @@index([projectId, status])
-}
-
-model AuditLog {
-  id         String      @id @default(cuid())
-  action     AuditAction
-  userId     String?
-  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  targetType String?
-  targetId   String?
-  metadata   Json?
-  ipAddress  String?
-  createdAt  DateTime    @default(now())
-
-  @@index([userId])
-  @@index([action])
-  @@index([createdAt])
 }
 
 // ─────────── NextAuth (Auth.js v5) tables ───────────

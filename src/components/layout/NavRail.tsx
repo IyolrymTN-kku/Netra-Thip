@@ -24,9 +24,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "OPERATE",
     items: [
       { id: "dashboard", href: "/dashboard", icon: "activity", label: "Dashboard" },
-      { id: "scans", href: "/scans", icon: "scan", label: "Scans" },
-      { id: "findings", href: "/findings", icon: "bug", label: "Findings", badgeKind: "critical" },
-      { id: "assets", href: "/assets", icon: "target", label: "Assets" },
+      { id: "scans", href: "/scans/new", icon: "scan", label: "Scans", badge: 6 },
+      { id: "findings", href: "/findings", icon: "bug", label: "Findings", badge: 47, badgeKind: "critical" },
+      { id: "targets", href: "/targets", icon: "target", label: "Targets" },
     ],
   },
   {
@@ -41,7 +41,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "MANAGE",
     items: [
-      { id: "settings", href: "/settings", icon: "settings", label: "Settings" },
+      { id: "engagements", href: "/engagements", icon: "database", label: "Engagements" },
+      { id: "team", href: "/team", icon: "user", label: "Team" },
       { id: "audit", href: "/audit", icon: "lock", label: "Audit Log" },
     ],
   },
@@ -50,10 +51,9 @@ const NAV_GROUPS: NavGroup[] = [
 interface NavRailProps {
   collapsed: boolean;
   onToggle: () => void;
-  navCounts?: { scans: number; findings: number; aiKeys: number };
 }
 
-export function NavRail({ collapsed, onToggle, navCounts }: NavRailProps) {
+export function NavRail({ collapsed, onToggle }: NavRailProps) {
   const pathname = usePathname();
 
   return (
@@ -64,9 +64,9 @@ export function NavRail({ collapsed, onToggle, navCounts }: NavRailProps) {
         background: "var(--surface)",
         display: "flex",
         flexDirection: "column",
-        overflow: "visible",
+        overflow: "hidden",
         position: "relative",
-        zIndex: 10,
+        zIndex: 5,
       }}
     >
       {/* Brand */}
@@ -202,11 +202,6 @@ export function NavRail({ collapsed, onToggle, navCounts }: NavRailProps) {
             {group.items.map((it) => {
               const isActive =
                 pathname === it.href || pathname.startsWith(`${it.href}/`);
-                
-              let badgeCount = it.badge;
-              if (it.id === "scans") badgeCount = navCounts?.scans ?? 0;
-              if (it.id === "findings") badgeCount = navCounts?.findings ?? 0;
-
               return (
                 <Link
                   key={it.id}
@@ -247,7 +242,7 @@ export function NavRail({ collapsed, onToggle, navCounts }: NavRailProps) {
                   {!collapsed && (
                     <>
                       <span style={{ flex: 1 }}>{it.label}</span>
-                      {typeof badgeCount === "number" && (
+                      {typeof it.badge === "number" && (
                         <span
                           style={{
                             fontSize: 10,
@@ -264,7 +259,7 @@ export function NavRail({ collapsed, onToggle, navCounts }: NavRailProps) {
                                 : "var(--ink-3)",
                           }}
                         >
-                          {badgeCount}
+                          {it.badge}
                         </span>
                       )}
                     </>
@@ -308,30 +303,19 @@ export function NavRail({ collapsed, onToggle, navCounts }: NavRailProps) {
         style={{
           position: "absolute",
           top: 16,
-          right: -12,
+          right: -10,
           zIndex: 10,
-          width: 24,
-          height: 24,
+          width: 20,
+          height: 20,
           borderRadius: "50%",
           border: "1px solid var(--line)",
           background: "var(--surface)",
-          color: "var(--ink-2)",
+          color: "var(--ink-3)",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-          transition: "all 0.2s ease"
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.background = "var(--surface-2)";
-          e.currentTarget.style.color = "var(--primary, #0066FF)";
-          e.currentTarget.style.transform = "scale(1.1)";
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.background = "var(--surface)";
-          e.currentTarget.style.color = "var(--ink-2)";
-          e.currentTarget.style.transform = "scale(1)";
+          boxShadow: "var(--shadow-sm)",
         }}
       >
         <Icon name={collapsed ? "chevronRight" : "chevronLeft"} size={12} />

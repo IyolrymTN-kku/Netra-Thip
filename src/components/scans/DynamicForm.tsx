@@ -28,22 +28,17 @@ interface FieldShellProps {
   children: React.ReactNode;
 }
 
-function FieldShell({ field, children, isConfigured }: FieldShellProps & { isConfigured?: boolean | string }) {
+function FieldShell({ field, children }: FieldShellProps) {
   return (
     <div className="nt-field">
       <label className="nt-field-label">
         <span>
           {field.label}
-          {field.required && !isConfigured && <span className="nt-field-required">*</span>}
+          {field.required && <span className="nt-field-required">*</span>}
         </span>
         {field.hint && <span className="nt-field-hint">{field.hint}</span>}
       </label>
-      {isConfigured ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "var(--surface-3)", borderRadius: 8, color: "var(--ink-2)", fontSize: 13, border: "1px dashed var(--line)" }}>
-          <Icon name="check" size={14} style={{color: "var(--ok)"}} />
-          Using default configuration <span className="mono" style={{color: "var(--ink-3)", fontSize: 11}}>({isConfigured})</span>
-        </div>
-      ) : children}
+      {children}
     </div>
   );
 }
@@ -405,13 +400,7 @@ function renderField(
   field: FieldConfig,
   value: unknown,
   onChange: (value: unknown) => void,
-  isConfigured: boolean | string = false
 ) {
-  // If the field is configured, we still use FieldShell but pass isConfigured to render the badge
-  if (isConfigured) {
-    return <FieldShell field={field} isConfigured={isConfigured}>{null}</FieldShell>;
-  }
-
   switch (field.type) {
     case "text":
     case "url":
@@ -486,10 +475,9 @@ interface DynamicFormProps {
   tool: ToolDef;
   values: FormValues;
   onChange: (fieldId: string, value: unknown) => void;
-  configuredFields?: Record<string, string>;
 }
 
-export function DynamicForm({ tool, values, onChange, configuredFields = {} }: DynamicFormProps) {
+export function DynamicForm({ tool, values, onChange }: DynamicFormProps) {
   const visible = tool.fields.filter((f) => {
     if (!f.hideWhen) return true;
     const ref = tool.fields.find((x) => x.id === f.hideWhen!.field);
@@ -560,7 +548,7 @@ export function DynamicForm({ tool, values, onChange, configuredFields = {} }: D
                   key={f.id}
                   style={{ gridColumn: fullWidth ? "1 / -1" : "auto" }}
                 >
-                  {renderField(f, values[f.id], (v) => onChange(f.id, v), configuredFields[f.id])}
+                  {renderField(f, values[f.id], (v) => onChange(f.id, v))}
                 </div>
               );
             })}

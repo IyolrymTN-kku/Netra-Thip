@@ -9,13 +9,10 @@ import {
   persistSecrets,
   secretsToPlaintextMap,
 } from "@/lib/scans/byok";
-import { decrypt } from "@/lib/security/encryption";
 import { triggerScansAsync } from "@/lib/scans/trigger";
 import { expandTargets } from "@/lib/scans/target-parser";
 import { FileRefSchema } from "@/lib/scans/upload-schema";
 import { assertPathInUserDir } from "@/lib/uploads/storage";
-import { logAudit, getClientIp } from "@/lib/audit/audit";
-import { getAiProviderMetadata } from "@/lib/settings/types";
 
 export const runtime = "nodejs";
 
@@ -57,53 +54,10 @@ export async function POST(req: Request) {
   const params: Record<string, unknown> = parameters ?? {};
   const bodySecrets: Record<string, unknown> = (incomingSecrets as Record<string, unknown>) ?? {};
 
-  // ─── BYOK secrets: encrypt + persist incoming keys ───
-  const extractedSecrets = extractSecrets(tool, bodySecrets);
-  await persistSecrets(projectId, extractedSecrets);
-  const secretMap = secretsToPlaintextMap(extractedSecrets);
-
-  // Auto-inject saved configurations (keys and metadata).
-  const savedConfigs = await prisma.apiKey.findMany({
-    where: { projectId },
-    select: {
-      provider: true,
-      encryptedKey: true,
-      iv: true,
-      authTag: true,
-      metadata: true,
-    },
-  });
-
-  const aiProvider = String(params.ai_provider || "openai");
-  const aiConfig = savedConfigs.find((c) => c.provider === aiProvider);
-  const aiMetadata = getAiProviderMetadata(aiConfig?.metadata);
-
-  for (const f of tool.fields) {
-    if (f.type === "secret" && !secretMap[f.id]) {
-      let provider = "";
-      if (f.id === "ai_api_key") provider = aiProvider;
-      else if (f.id.endsWith("_api_key")) provider = f.id.replace("_api_key", "");
-      else provider = `${tool.id}_${f.id}`;
-
-      const saved = savedConfigs.find((c) => c.provider === provider);
-
-      if (saved) {
-        try {
-          secretMap[f.id] = decrypt({ ciphertext: saved.encryptedKey, iv: saved.iv, authTag: saved.authTag });
-        } catch {
-          console.error(`Failed to decrypt saved key for ${provider}`);
-        }
-      } else if (aiMetadata) {
-        // Inject model/baseUrl from the main AI provider's metadata if applicable
-        if ((f.id === "model" || f.id === "ai_model") && aiMetadata.model) {
-          secretMap[f.id] = aiMetadata.model;
-        }
-        if ((f.id === "base_url" || f.id === "ai_base_url") && aiMetadata.baseUrl) {
-          secretMap[f.id] = aiMetadata.baseUrl;
-        }
-      }
-    }
-  }
+  // ─── BYOK secrets: encrypt + persist, keep plaintext map in-memory only ───
+  const secrets = extractSecrets(tool, bodySecrets); 
+  await persistSecrets(projectId, secrets);
+  const secretMap = secretsToPlaintextMap(secrets);
 
   // ─── File refs: validate shape + reject path traversal ───
   const fileRefs: Record<string, { path: string; originalName: string; size: number }> = {};
@@ -150,26 +104,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "too many targets (max 256)" }, { status: 400 });
   }
 
+  const jobsToTrigger = [];
+
   for (const t of parsedTargets) {
     await prisma.asset.upsert({
       where: { projectId_target: { projectId, target: t } },
       update: {},
       create: { projectId, target: t, type: assetType },
     });
-  }
-
-  // Vuls and Sirius both support multi-target execution in one run. Keep
-  // those results under one ScanJob so range scans render on one results page.
-  const executionTargets =
-    toolName === "vuls"
-      ? [parsedTargets.join(",")]
-      : toolName === "sirius"
-        ? [target.trim()]
-        : parsedTargets;
-
-  const jobsToTrigger = [];
-
-  for (const t of executionTargets) {
 
     const scanJob = await prisma.scanJob.create({
       data: {
@@ -203,19 +145,6 @@ export async function POST(req: Request) {
     fileRefs,
     callbackUrl: callbackUrl(req),
   });
-
-  // Audit: log scan creation
-  const clientIp = getClientIp(req);
-  for (const j of jobsToTrigger) {
-    void logAudit({
-      action: "SCAN_CREATED",
-      userId: session.user.id,
-      targetType: "ScanJob",
-      targetId: j.scanJob.id,
-      metadata: { toolName, target: j.target },
-      ipAddress: clientIp,
-    });
-  }
 
   return NextResponse.json({ jobs: jobsToTrigger.map(j => j.scanJob) }, { status: 201 });
 }

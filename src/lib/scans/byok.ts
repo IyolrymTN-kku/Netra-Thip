@@ -9,7 +9,7 @@ export interface PersistedSecret {
   rawValue: string;
 }
 
-export function inferProvider(
+function inferProvider(
   tool: ToolDef,
   fieldId: string,
   params: Record<string, unknown>,
@@ -35,9 +35,6 @@ export function extractSecrets(
   const out: PersistedSecret[] = [];
   for (const f of tool.fields) {
     if (f.type !== "secret") continue;
-    // Don't save model and base_url as standalone API keys, they are managed via Settings metadata
-    if (f.id === "model" || f.id === "base_url" || f.id === "ai_model" || f.id === "ai_base_url") continue;
-
     const raw = params[f.id];
     if (typeof raw !== "string" || raw.trim() === "") continue;
     out.push({

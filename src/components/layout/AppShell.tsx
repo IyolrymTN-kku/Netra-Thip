@@ -6,13 +6,12 @@ import { TopNav } from "./TopNav";
 
 interface AppShellProps {
   user: { name: string | null; email: string; role: string };
-  navCounts?: { scans: number; findings: number; aiKeys: number };
   children: React.ReactNode;
 }
 
 type Theme = "light" | "dark";
 
-export function AppShell({ user, navCounts, children }: AppShellProps) {
+export function AppShell({ user, children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
 
@@ -25,7 +24,6 @@ export function AppShell({ user, navCounts, children }: AppShellProps) {
       <NavRail
         collapsed={collapsed}
         onToggle={() => setCollapsed((v) => !v)}
-        navCounts={navCounts}
       />
       <TopNav
         user={user}
@@ -33,7 +31,6 @@ export function AppShell({ user, navCounts, children }: AppShellProps) {
         onToggleTheme={() =>
           setTheme((t) => (t === "dark" ? "light" : "dark"))
         }
-        navCounts={navCounts}
       />
       <main
         style={{

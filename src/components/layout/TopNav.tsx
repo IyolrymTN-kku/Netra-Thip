@@ -2,16 +2,11 @@
 
 import { signOut } from "next-auth/react";
 import { Icon } from "@/components/icons/Icon";
-import type { IconName } from "@/components/icons/Icon";
-import Link from "next/link";
-import { useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
 
 interface TopNavProps {
   user: { name: string | null; email: string; role: string };
   theme: "light" | "dark";
   onToggleTheme: () => void;
-  navCounts?: { scans: number; findings: number; aiKeys: number };
 }
 
 function initials(input: string): string {
@@ -23,36 +18,9 @@ function initials(input: string): string {
     .join("");
 }
 
-export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
+export function TopNav({ user, theme, onToggleTheme }: TopNavProps) {
   const displayName = user.name?.trim() || user.email;
   const avatar = initials(displayName);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const pathname = usePathname();
-
-  // Dynamic breadcrumb logic
-  const segment = pathname?.split('/').filter(Boolean).pop() || "dashboard";
-  const currentLabel = segment.charAt(0).toUpperCase() + segment.slice(1);
-  
-  let parentLabel = "Operate";
-  let parentIcon: IconName = "activity";
-  if (['settings', 'audit'].includes(segment)) {
-    parentLabel = "Manage";
-    parentIcon = "settings";
-  } else if (['va', 'pentest', 'recon', 'reports'].includes(segment)) {
-    parentLabel = "Tools";
-    parentIcon = "shield";
-  }
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   return (
     <header
@@ -80,35 +48,15 @@ export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
           fontSize: 12.5,
         }}
       >
-        <Link 
-          href="/dashboard" 
-          style={{ 
-            color: "var(--ink-3)", 
-            textDecoration: "none", 
-            display: "flex", 
-            alignItems: "center", 
-            gap: 8,
-            transition: "color 0.2s"
-          }}
-          onMouseOver={(e) => e.currentTarget.style.color = "var(--ink)"}
-          onMouseOut={(e) => e.currentTarget.style.color = "var(--ink-3)"}
-        >
-          <Icon name={parentIcon} size={14} />
-          <span>{parentLabel}</span>
-        </Link>
+        <Icon name="activity" size={14} />
+        <span>Operate</span>
         <Icon name="chevronRight" size={12} />
-        <Link 
-          href={pathname || "/"} 
-          style={{ color: "var(--ink)", fontWeight: 600, textDecoration: "none" }}
-        >
-          {currentLabel}
-        </Link>
+        <span style={{ color: "var(--ink)", fontWeight: 600 }}>Dashboard</span>
       </div>
 
       {/* Search */}
       <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
         <div
-          onClick={() => searchInputRef.current?.focus()}
           style={{
             width: "min(520px, 50vw)",
             height: 34,
@@ -121,33 +69,11 @@ export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
             gap: 8,
             color: "var(--ink-3)",
             fontSize: 12.5,
-            cursor: "text",
-            transition: "border-color 0.2s, box-shadow 0.2s"
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.borderColor = "var(--primary, #0066FF)";
-            e.currentTarget.style.boxShadow = "0 0 0 2px rgba(0, 102, 255, 0.2)";
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = "var(--line)";
-            e.currentTarget.style.boxShadow = "none";
           }}
         >
           <Icon name="search" size={14} />
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search scans, findings, CVEs, targets…"
-            style={{
-              flex: 1,
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "var(--ink)",
-              fontSize: 13,
-              width: "100%",
-            }}
-          />
+          <span>Search scans, findings, CVEs, targets…</span>
+          <span style={{ flex: 1 }} />
           <kbd
             className="mono"
             style={{
@@ -157,7 +83,6 @@ export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
               background: "var(--surface)",
               border: "1px solid var(--line)",
               color: "var(--ink-3)",
-              pointerEvents: "none",
             }}
           >
             ⌘K
@@ -167,7 +92,7 @@ export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
 
       {/* Right cluster */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Link href="/settings" className="btn btn-sm" style={{ gap: 6, textDecoration: "none" }}>
+        <button type="button" className="btn btn-sm" style={{ gap: 6 }}>
           <Icon name="sparkles" size={13} />
           <span>AI Keys</span>
           <span
@@ -180,9 +105,9 @@ export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
               color: "var(--ok)",
             }}
           >
-            {navCounts?.aiKeys ?? 0} active
+            3 active
           </span>
-        </Link>
+        </button>
         <span
           style={{
             width: 1,

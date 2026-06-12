@@ -19,8 +19,8 @@ const TOOLS = [
   { id: 'vuls', name: 'VULS', tagline: 'Linux/Unix CVE scanner', glyph: 'V', color: '#EAB308', category: 'VA Scan', cat: 1, runtime: '~ 8 min',
     desc: 'Agent-less SSH-based vulnerability scanner.',
     fields: [
-      { id: 'target_ips', label: 'Target IPs', type: 'textarea', placeholder: '192.168.87.138,192.168.87.139', required: true, group: 'Target', hint: 'Enter one or more Linux target IP addresses. Separate multiple IPs by new line or comma.'},
-      { id: 'ssh_users', label: 'SSH Usernames', type: 'textarea', placeholder: 'admin,ubuntu', required: true, group: 'Auth', hint: 'Enter SSH usernames in the same order as Target IPs. Example: line 1 username is used for line 1 IP.'},
+      { id: 'target_ips', label: 'Target IPs', type: 'textarea', placeholder: '192.168.87.138\n192.168.87.139', required: true, group: 'Target', hint: 'Enter one or more Linux target IP addresses. Separate multiple IPs by new line or comma.'},
+      { id: 'ssh_users', label: 'SSH Usernames', type: 'textarea', placeholder: 'admin\nubuntu', required: true, group: 'Auth', hint: 'Enter SSH usernames in the same order as Target IPs. Example: line 1 username is used for line 1 IP.'},
       { id: 'ssh_port', label: 'SSH Port', type: 'text', default: 22, required: true, group: 'Auth' }
     ]},
   // Cat 2 — API

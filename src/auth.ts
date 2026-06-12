@@ -5,7 +5,6 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 import { authConfig } from "@/auth.config";
-import { logAudit } from "@/lib/audit/audit";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -32,13 +31,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         await prisma.user.update({
           where: { id: user.id },
           data: { lastLoginAt: new Date() },
-        });
-
-        // Audit: successful login
-        void logAudit({
-          action: "USER_LOGIN",
-          userId: user.id,
-          metadata: { email: user.email },
         });
 
         return {
