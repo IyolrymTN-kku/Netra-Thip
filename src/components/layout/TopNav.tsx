@@ -4,7 +4,7 @@ import { signOut } from "next-auth/react";
 import { Icon } from "@/components/icons/Icon";
 import type { IconName } from "@/components/icons/Icon";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 interface TopNavProps {
@@ -21,6 +21,191 @@ function initials(input: string): string {
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const bellRef = useRef<HTMLDivElement>(null);
+  const previousUnreadCount = useRef(-1);
+  const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
+  
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const fetchNotifs = () => {
+      fetch("/api/notifications")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.notifications) {
+            const unread = d.notifications.filter((n: any) => !n.isRead).length;
+            if (previousUnreadCount.current !== -1 && unread > previousUnreadCount.current) {
+              const newest = d.notifications[0];
+              if (newest && !newest.isRead) {
+                const cleanMsg = String(newest.message || "").replace(/\s*\[line\s+\d+\]\s*$/i, "");
+                setToast({ title: newest.title, message: cleanMsg });
+                try {
+                  // Using an official Google UI notification sound (safe, clean, standard)
+                  const audio = new Audio("https://actions.google.com/sounds/v1/cartoon/pop.ogg");
+                  audio.volume = 0.5;
+                  audio.play().catch(() => {});
+                } catch(e) {}
+                setTimeout(() => setToast(null), 5000);
+              }
+            }
+            previousUnreadCount.current = unread;
+            setNotifications(d.notifications);
+          }
+        })
+        .catch(console.error);
+    };
+    
+    fetchNotifs();
+    const interval = setInterval(fetchNotifs, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const markAllAsRead = async () => {
+    await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "read_all" }),
+    });
+    setNotifications(notifications.map((n) => ({ ...n, isRead: true })));
+  };
+
+  return (
+    <div ref={bellRef} style={{ position: "relative" }}>
+      {toast && (
+        <div style={{
+          position: "fixed",
+          top: 70, // Moved to top right, just below header
+          right: 24,
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
+          borderLeft: "4px solid var(--sev-critical)",
+          borderRadius: 8,
+          padding: "16px",
+          boxShadow: "0 10px 40px rgba(0,0,0,0.2)", // Enhanced shadow to stand out at the top
+          zIndex: 9999,
+          maxWidth: 320,
+          animation: "slideIn 0.3s ease-out"
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", marginBottom: 6 }}>{toast.title}</div>
+          <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.4 }}>{toast.message}</div>
+        </div>
+      )}
+      <button
+        type="button"
+        aria-label="Notifications"
+        onClick={() => setOpen(!open)}
+        style={{
+          width: 32,
+          height: 32,
+          border: open ? "1px solid var(--line)" : 0,
+          borderRadius: 7,
+          background: open ? "var(--surface-2)" : "transparent",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--ink-2)",
+          position: "relative",
+          transition: "all 0.2s"
+        }}
+      >
+        <Icon name="bell" size={15} />
+        {unreadCount > 0 && (
+          <span
+            style={{
+              position: "absolute",
+              top: 6,
+              right: 6,
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--sev-critical)",
+              border: "1.5px solid var(--surface)",
+            }}
+          />
+        )}
+      </button>
+      
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: 40,
+            right: 0,
+            width: 340,
+            maxHeight: 400,
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            zIndex: 10,
+          }}
+        >
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>Notifications</span>
+            {unreadCount > 0 && (
+              <button 
+                onClick={markAllAsRead}
+                style={{ background: "none", border: "none", color: "var(--primary, #0066FF)", fontSize: 11.5, cursor: "pointer" }}
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div style={{ overflowY: "auto", flex: 1, padding: "8px 0" }}>
+            {notifications.length === 0 ? (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--ink-3)", fontSize: 12.5 }}>
+                No notifications
+              </div>
+            ) : (
+              notifications.map((n) => (
+                <div 
+                  key={n.id} 
+                  style={{ 
+                    padding: "10px 16px", 
+                    display: "flex", 
+                    gap: 12,
+                    background: n.isRead ? "transparent" : "var(--surface-2)",
+                    borderLeft: n.isRead ? "3px solid transparent" : "3px solid var(--primary, #0066FF)"
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontWeight: n.isRead ? 400 : 600, fontSize: 12.5, color: "var(--ink)" }}>{n.title}</span>
+                      <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                        {new Date(n.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.4 }}>
+                      {String(n.message || "").replace(/\s*\[line\s+\d+\]\s*$/i, "")}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
@@ -211,37 +396,7 @@ export function TopNav({ user, theme, onToggleTheme, navCounts }: TopNavProps) {
         >
           <Icon name={theme === "dark" ? "sun" : "moon"} size={15} />
         </button>
-        <button
-          type="button"
-          aria-label="Notifications"
-          style={{
-            width: 32,
-            height: 32,
-            border: 0,
-            borderRadius: 7,
-            background: "transparent",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--ink-2)",
-            position: "relative",
-          }}
-        >
-          <Icon name="bell" size={15} />
-          <span
-            style={{
-              position: "absolute",
-              top: 6,
-              right: 6,
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              background: "var(--sev-critical)",
-              border: "1.5px solid var(--surface)",
-            }}
-          />
-        </button>
+        <NotificationBell />
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}

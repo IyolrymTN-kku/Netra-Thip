@@ -4,7 +4,7 @@ import { Icon, type IconName } from "@/components/icons/Icon";
 interface ResultsHeaderProps {
   scanJob: Pick<
     ScanJob,
-    "id" | "toolName" | "status" | "startedAt" | "completedAt" | "createdAt"
+    "id" | "toolName" | "status" | "startedAt" | "completedAt" | "createdAt" | "parameters"
   >;
   findingCount: number;
 }
@@ -69,6 +69,16 @@ export function ResultsHeader({ scanJob, findingCount }: ResultsHeaderProps) {
   const banner = BANNER[scanJob.status];
   const finishedAt = scanJob.completedAt ?? null;
   const startedAt = scanJob.startedAt ?? null;
+  
+  let label = banner.label;
+  if (scanJob.status === "FAILED") {
+    const params = (scanJob.parameters || {}) as Record<string, any>;
+    if (params._failureReason) {
+      // Remove n8n's auto-appended "[line XYZ]" from the error message
+      const cleanReason = String(params._failureReason).replace(/\s*\[line\s+\d+\]\s*$/i, "");
+      label = `Execution failed: ${cleanReason}`;
+    }
+  }
 
   return (
     <section
@@ -187,7 +197,7 @@ export function ResultsHeader({ scanJob, findingCount }: ResultsHeaderProps) {
         ) : (
           <Icon name={banner.icon} size={14} stroke={2.2} />
         )}
-        <span style={{ flex: 1 }}>{banner.label}</span>
+        <span style={{ flex: 1 }}>{label}</span>
       </div>
     </section>
   );

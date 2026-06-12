@@ -24,6 +24,7 @@ export default async function ScanResultsPage({ params }: ScanPageProps) {
       startedAt: true,
       completedAt: true,
       createdAt: true,
+      parameters: true,
     },
   });
   if (!scanJob) notFound();
