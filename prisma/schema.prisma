@@ -73,6 +73,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   auditLogs     AuditLog[]
+  notifications Notification[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -218,4 +219,19 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("info") // "error", "warning", "info", "success"
+  isRead    Boolean  @default(false)
+  link      String?  
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([createdAt])
 }

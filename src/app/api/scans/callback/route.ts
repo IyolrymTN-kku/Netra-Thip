@@ -71,6 +71,25 @@ export async function POST(req: Request) {
       },
     });
 
+    // Create notification if failed
+    if (status === "FAILED") {
+      const fullJob = await prisma.scanJob.findUnique({
+        where: { id: scanJobId },
+        include: { project: true },
+      });
+      if (fullJob?.project?.userId) {
+        await prisma.notification.create({
+          data: {
+            userId: fullJob.project.userId,
+            title: "Scan Job Failed",
+            message: `Scan job ${fullJob.toolName} failed. Reason: ${failureReason || "Unknown"}`,
+            type: "error",
+            link: "/scans",
+          },
+        });
+      }
+    }
+
     // Audit: scan completed/failed
     void logAudit({
       action: "SCAN_COMPLETED",
